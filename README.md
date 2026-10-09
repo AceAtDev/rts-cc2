@@ -25,7 +25,7 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 | Shift-click | Add or remove a unit |
 | Right-click | Move, attack, follow, gather, repair, or set a rally point |
 | A / M / S / H / P | Attack / Move (or Follow a clicked unit) / Stop / Hold Position / Patrol |
-| Shift + command | Append orders and waypoints |
+| Shift + command | Append orders and waypoints (32 total unit orders; four rally targets) |
 | Ctrl + 0–9 / Shift + 0–9 | Set / add to a control group |
 | Ctrl+Alt + 0–9 / Alt+Shift + 0–9 | Set-and-steal / append-and-steal group members |
 | Group button: click / right-click / Alt-right-click | Recall / set / set-and-steal |
@@ -41,6 +41,8 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 | Hold Alt / [ / ] | All / friendly / enemy overhead vital bars |
 | SCV: B → S / B → B / V → F | Build Depot / Barracks / Factory |
 | Factory: X, then S | Build a Tech Lab, then train a Siege Tank |
+| Command Center: O / D | Load nearby SCVs / unload; passenger icons unload individually |
+| SCV: right-click Repair button | Toggle Repair autocast |
 | Tank: E / D | Siege / Unsiege |
 | Marine: T | Stimpack, after Tech Lab research |
 
@@ -51,7 +53,7 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 - Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
 - Explicit worker targets, fog-safe Follow/Attack intent, pursuit isolated from march slots, and stable moving-target planning.
 - Persistent combat targets, visible-attacker response, explicit Move/Hold preservation, cancelable windup, cooldowns, projectiles, Reaper bursts/regeneration, flame lines, and radius-dependent Siege splash.
-- Physical number-key groups, all ten assignable HUD slots, right-click assignment/stealing, cargo memory, controllable gas harvesters, and interrupted double-tap handling.
+- Physical number-key groups, all ten assignable HUD slots, right-click assignment/stealing, cargo memory, remembered gas workers restored after extraction, and interrupted double-tap handling.
 - A paid opponent economy with local harvesting, supply planning, legal construction, scouting, gathering, defense and fog-safe attack orders.
 - Damage-preserving construction and defeat only after the player loses every actual structure.
 - Stepped Terran console with square 5 × 3 command cells, original green selection wireframes, and a locally bundled console font.
@@ -60,7 +62,9 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 - Full-footprint construction stages, smooth Depot retraction and building lift/land, extraction pumps, production activity, and damage effects.
 - Distinct hover/selection rings, active subgroup colors, damage-colored vitals/wireframes, independent construction/energy bars, mineral/gas saturation labels, and discrete mineral meshes.
 - Grid-snapped building placement, per-cell validity and add-on pads, catalog path contours, lowered-Depot pathing, and separate placement occupancy.
-- Worker mineral walking, exclusive harvesting, smart local splitting, gas entrance/exit and waiting, queued cargo return, one maintained construction worker, repair autocast during Patrol, and nearest-builder selection.
+- Worker mineral walking, exclusive harvesting, smart local splitting, gas entrance/exit and waiting, queued cargo return, one maintained construction worker with service motion, idle/Patrol/contact-only Hold repair autocast, and nearest-builder selection.
+- Command Center boarding, cargo UI, ground/flying transport queues and passenger destruction outcomes.
+- Bounded order/rally queues with transactional build admission, live rally chains and lost-resource Gather points.
 - Resource gathering, construction, production queues, rally orders, add-ons, research, lift/land, and an opponent using its own economy.
 
 The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege Tank. Other reference buttons explain their unavailable state in their tooltips. Multiplayer, air combat, a full tech tree, other races, and campaigns remain outside the current implementation.
@@ -81,6 +85,9 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `dist/movement.js`: route following, crowd steering, destination reservations, and collisions.
 - `dist/geometry.js`, `dist/placement.js`, `dist/navigation.js`: footprints, placement cells, interaction surfaces and static pathing.
 - `dist/workers.js`: harvest ownership, timings, resource splitting, return trips and interruptions.
+- `dist/construction.js`, `dist/transport.js`, `dist/repair-autocast.js`: construction service motion, passenger lifecycle and context-preserving automatic repair.
+- `dist/order-queues.js`: transactional order/rally admission, lifecycle cleanup and complete birth queues.
+- [Completed six-gap pass](docs/remaining-controls-integration.md): implemented behaviors, evidence and practical fidelity limits.
 - `dist/combat.js`: acquisition, weapon phases, projectiles, damage, and regeneration.
 - `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
 - `docs/gameplay-audit-followup.md`, `docs/visual-design-followup.md`: reproduced failures and reference-driven changes.
@@ -105,6 +112,14 @@ python3 -m venv .venv
 . .venv/bin/activate
 python3 -m pip install -r requirements-dev.txt
 python3 -m playwright install chromium
+python3 tests/remaining_details_integration.py
+python3 tests/construction_integration.py
+node tests/construction_fidelity.mjs
+node tests/transport_fidelity.mjs
+node tests/repair_autocast_fidelity.mjs
+node tests/order_queues_followup.mjs
+node tests/native_gas_phases.mjs
+node tests/native_worker_cargo_points.mjs
 python3 tests/browser_controls.py
 python3 tests/browser_input.py
 python3 tests/unit_micro.py

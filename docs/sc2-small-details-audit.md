@@ -2,7 +2,7 @@
 
 This audit compares the implemented Terran subset with Blizzard's control guides and pinned SC2 catalog data. It is not a claim of full engine parity. Catalog evidence identifies settings; it does not prove proprietary runtime arbitration or timing. Native research from earlier passes uses the historical 4.10 client, while current patch notes can describe newer behavior.
 
-## Fixed in this pass
+## Earlier detail fixes
 
 | Detail | Demo gap found | Result |
 | --- | --- | --- |
@@ -17,16 +17,24 @@ This audit compares the implemented Terran subset with Blizzard's control guides
 | Camera locations | Shift bank was ignored; Home/End were absent. | Independent two banks of four locations and zoom endpoint bindings. |
 | Construction sight/noise | Planned structures granted vision, unfinished structures had finished sight; each trained SCV emitted a readiness transmission. | Planned ghosts grant no vision; constructing structures use catalog sight4. Worker readiness no longer fills transmission history. |
 
-## Still missing or requiring measurements
+## Six previously missing gaps resolved
+
+These were implementation gaps in the earlier audit. The follow-up implements and checks their control transitions; historical native observations and current construction patch notes establish the comparison boundaries below.
+
+| Detail | Implemented result and evidence |
+| --- | --- |
+| Command Center loading | Five-capacity reservations, visible worker approach/contact, cargo-preserving boarding, passenger buttons and grounded/flying destruction outcomes replace instant hiding. Grounded Load/Unload, including Shift, execute immediately during Train; production is not a transport-order barrier. Shift Load/Unload wait behind an existing flying Move. Native 4.10 supports these distinctions; approach and multi-passenger exit geometry remain authored. See [transport comparison](transport-fidelity.md) and [transport module](../dist/transport.js). |
+| Construction-worker motion | Ordinary collision during approach, then periodic service movement through the current building footprint while progress continues; Halt/death/replacement clear ownership. An additional queued builder waits with successors intact and can take over. Historical 4.10 supports interior movement and continuous progress; the implemented 4.64–6.07-second relocation bounds and sequential-Build fix come from patches 5.0.14/5.0.16. RNG, service trajectories and takeover geometry remain prototype policies. See [construction comparison](construction-fidelity.md) and [construction module](../dist/construction.js). |
+| Gas successors and repeated input | Queued successors activate on gas emergence with earned cargo, before deposit. Repeated visible approach Gather/Smart preserves extraction timing; known-tag hidden-worker commands were unavailable in native 4.10 and are rejected by the host rather than assigned an invented reset rule. Gather with existing cargo visits the resource first, then returns or promotes its successor at contact. See [native gas/cargo observations](native-worker-gas-followup.md) and [worker module](../dist/workers.js). |
+| Repair autocast contexts | Idle and Patrol can approach and restore their interrupted context; Hold repairs only at contact, and Move suppresses acquisition. Acquisition requires funds; manual unfunded Repair is rejected, Smart falls back to Follow, and exhausted manual Repair promotes its successor without silently restarting. These transitions have native 4.10 observations; contact tolerances and candidate tie-breaking remain authored. See [repair context comparison](repair-autocast-fidelity.md) and [intent module](../dist/repair-autocast.js). |
+| Rally target loss/feedback | Full selected-owner world/minimap chains follow friendly moving targets. Known-lost ordinary targets are pruned while valid successors survive; lost minerals retain Gather-at-point and local resource recovery. Every resource link converts to Move for combat births. Catalog flags and native 4.10 observations establish the lost-unit/resource distinction; recovery polling/search weights remain prototype policies. See [queue/rally comparison](order-queue-rally-followup.md) and [queue module](../dist/order-queues.js). |
+| Unit/rally queue bounds | Admission now limits unit queues to 32 total orders including the active order, and rally chains to four total targets. Distinct overflow notices, accepted-cohort feedback and preflight before paid placement prevent false success and lost resources. Native 4.10 Marine and Command Center threshold trials establish these limits; current-build and producer-specific variants remain unmeasured. Production's five slots are a separate rule. See [queue/rally comparison](order-queue-rally-followup.md) and [queue module](../dist/order-queues.js). |
+
+## Remaining fidelity work
 
 | Detail | Evidence and remaining work |
 | --- | --- |
-| Command Center loading | Current implementation hides nearby workers instantly. Catalog search8/range1 and queueable Load/Unload require approach/contact and Shift scheduling work; geometry needs native capture. |
-| Construction-worker motion | Building workers remain at one contact position with ordinary collision. Catalog Construction mover/PeonDisableCollision and patch5.0.14 relocation behavior merit their own measured pass. |
-| Gas successors and repeated input | Explicit Gather and Smart gas commands reset progress alike; successors wait for deposit. Mineral behavior was measured earlier, but gas must be captured separately. |
-| Repair autocast contexts | Hold can allow a repair pursuit. Patrol autocast is documented; Hold/Move/starvation policy is unmeasured. |
-| Rally target loss/feedback | Dead target rallies are not cleared. Flag endpoints are click positions and queued rally routes are not fully displayed. Catalog ClearRallyOnTargetLost identifies a real follow-up. |
-| Unit/rally queue bounds | Both remain unlimited. Blizzard documents bounded queues and a full-queue error; this audit did not establish the numeric runtime limit. Production's five slots are a separate rule. |
+| Native geometry and current-client behavior | Exact crowd steering, transport contact/exit placement, construction trajectories and RNG, repair rounding/tie-breaking, and resource-point polling need further comparisons. Historical 4.10 transitions do not certify the modern engine. |
 | Broader fidelity | Native crowd steering, full enemy strategy, complete races/abilities, authored models, audio and animation remain distinct from SC2. These fixes do not certify identical smoothness. |
 
 ## Sources
@@ -37,6 +45,7 @@ This audit compares the implemented Terran subset with Blizzard's control guides
 - [Blizzard Basic Unit Controls](https://news.blizzard.com/en-us/article/4552956/game-guide-basic-unit-controls): move/follow and repair autocast during Patrol.
 - [Blizzard Buildings](https://news.blizzard.com/en-us/article/4488317/game-guide-buildings): resource and unit-target rallies.
 - [Blizzard patch5.0.14](https://news.blizzard.com/en-us/article/24162754/starcraft-ii-5-0-14-patch-notes): construction worker relocation timing.
+- [Blizzard patch5.0.16](https://news.blizzard.com/en-us/article/24259080/starcraft-ii-5-0-16-patch-notes): queued construction on occupied structures and melee order retention during footprint passage.
 - [Pinned Core ability catalog](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/AbilData.xml): attack/move feedback colors, Train BestUnit, transport defaults.
 - [Pinned Core game catalog](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/GameData.xml): UnitSightRangeUnderConstruction4.
 - [Pinned Core alerts](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/AlertData.xml): distinct attack warnings, pulses, overlap settings, hidden worker completion and separate errors.
@@ -44,8 +53,8 @@ This audit compares the implemented Terran subset with Blizzard's control guides
 - [Pinned Core unit catalog](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/UnitData.xml): ClearRallyOnTargetLost.
 - [Pinned Liberty requirements](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/liberty.sc2mod/base.sc2data/GameData/RequirementData.xml) and [nodes](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/liberty.sc2mod/base.sc2data/GameData/RequirementNodeData.xml): queued-or-better team upgrade exclusion.
 
-Worker details, exact fields, uncertainty and sources are expanded in [worker-interaction-audit.md](worker-interaction-audit.md). Scoped implementation notes: [attack-move](attack-move-fidelity.md), [repair](repair-cost-fidelity.md), [alerts](alert-feedback-followup.md).
+Worker details, exact fields, uncertainty and sources are expanded in [worker-interaction-audit.md](worker-interaction-audit.md). Scoped implementation notes: [attack-move](attack-move-fidelity.md), [repair costs](repair-cost-fidelity.md), [alerts](alert-feedback-followup.md), and [six-gap integration](remaining-controls-integration.md).
 
 ## Validation
 
-26 new browser integration checks exercise the real dispatcher, production DOM and keyboard bindings. All25 isolated modules pass (417 checks). Existing autonomous50, gameplay31 and input15 browser checks also pass:122 browser checks in this pass. Browser tests use headless Chromium/software WebGL; they do not measure human-perceived input latency or certify native parity.
+The completed six-gap follow-up passes 49 [remaining-details browser integration checks](../tests/remaining_details_integration.py) and 26 [construction integration checks](../tests/construction_integration.py). These exercise real dispatch, Load/Unload hotkeys during production, passenger clicks, paid-placement rollback, hidden-gas rejection, repair restoration, rally feedback, construction ownership and queued execution. The [integration report](remaining-controls-integration.md) records the isolated-suite and regression results. Browser tests use headless Chromium/software WebGL; they do not measure human-perceived input latency or certify native parity.
