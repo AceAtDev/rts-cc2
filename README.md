@@ -84,6 +84,8 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
 - `docs/gameplay-audit-followup.md`, `docs/visual-design-followup.md`: reproduced failures and reference-driven changes.
 - `docs/native-control-comparison.md`, `tests/native_compare/`: native capture/comparison procedure and browser adapter; historical 4.10 captures now measure isolated movement and order behavior.
+- `docs/native-autonomous-observations.md`: controlled two-player native unit-response and worker lifecycle observations.
+- `docs/automatic-combat-fidelity.md`, `docs/movement-contact-fidelity.md`, `docs/worker-recovery.md`: assistance, crowded contact, Tank steering and worker command distinctions, with measured facts separated from custom policies.
 - `dist/renderer.js`: 3D scene, visible-geometry picking, models, interpolation, and battlefield overlays.
 - `dist/camera-profile.js`, `dist/presentation-profile.js`: catalog camera stops and vital palettes.
 - `dist/unit-animation.js`, `dist/building-animation.js`: authored state-driven actor rigs and transitions.
@@ -107,6 +109,11 @@ python3 tests/browser_input.py
 python3 tests/unit_micro.py
 python3 tests/unit_intent_integration.py
 node tests/worker_intent_followup.mjs
+node tests/worker_recovery.mjs
+node tests/automatic_combat_fidelity.mjs
+node tests/idle_anchor_fidelity.mjs
+node tests/movement-contact-fidelity.mjs
+python3 tests/autonomous_controller_integration.py
 node tests/unit_order_fidelity.mjs
 node tests/movement_pursuit_fidelity.mjs
 python3 tests/worker_controls.py

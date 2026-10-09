@@ -34,8 +34,9 @@ with sync_playwright() as p:
   if(!attacker)attacker=g.spawn('marine',1-team,1024,1100);
   g.stop(attacker,true);attacker.angle=attacker.pangle=Math.PI;victim.hp=victim.maxhp=10000;g.invalidateNav();
   const hx=helper.x;tick(1);check('Team '+team+' helper stays idle before damage ('+(attackerFirst?'attacker first':'helper first')+')',helper.x===hx&&!helper.combatTarget);
-  tick(1);check('Team '+team+' idle helper responds on the damage loop regardless of iteration order',victim.hp<10000&&helper.combatTarget===attacker&&helper.x>hx,{loop:g.simulationLoop,x:helper.x,hp:victim.hp});
+  tick(1);check('Team '+team+' idle helper acquires on the damage loop regardless of iteration order',victim.hp<10000&&helper.combatTarget===attacker&&helper.x===hx,{loop:g.simulationLoop,x:helper.x,hp:victim.hp});
   const once=helper.x;g.combat.flushHelp(dt);check('Same-loop help flush cannot advance the helper twice',helper.x===once);
+  tick(1);check('Team '+team+' helper begins its approach on the following loop',helper.combatTarget===attacker&&helper.x>hx);
  }
  for(const command of ['hold','move']){
   reset();g.spawn('core',0,400,1100);g.spawn('core',1,1900,400);
@@ -67,6 +68,30 @@ with sync_playwright() as p:
  g.spawn('core',0,630,1100);g.invalidateNav();tick(1);
  check('A new grounded drop-off resumes the pending cargo trip',orphan.carry===5&&orphan.x<waiting.x);
  tick(150);check('Recovered orphan deposits and resumes its mineral cycle',orphan.deliveredTrips>=1&&g.money>=5&&orphan.order?.kind==='mine');
+ for(const team of [0,1]){
+  reset();g.spawn('core',0,400,1100);g.spawn('core',1,1900,400);
+  const target=g.spawn('marine',1-team,870,1040);g.stop(target,true);target.damage=0;target.hp=target.maxhp=100000;
+  const pack=Array.from({length:12},(_,i)=>g.spawn('worker',team,690+i%4*25,980+Math.floor(i/4)*25));
+  for(const u of pack)g.issue(u,{kind:'attack',target});g.invalidateNav();const contributors=new Set();
+  for(let i=0;i<500;i++){tick(1);for(const u of pack)if(u.visualShotSerial>0)contributors.add(u.id);}
+  check('Team '+team+' crowded SCVs find usable contact positions in the live executor',contributors.size>=6&&target.hp<99500&&pack.every(u=>u.order?.target===target),{contributors:contributors.size,hp:target.hp});
+  const settled=pack.map(u=>({x:u.x,y:u.y}));tick(100);
+  check('Team '+team+' full melee surround settles while continuing to attack',pack.every((u,i)=>Math.hypot(u.x-settled[i].x,u.y-settled[i].y)<.25&&Math.hypot(u.vx,u.vy)<1)&&target.x===870&&target.y===1040);
+  check('Team '+team+' melee contact respects target and ally bodies',pack.every(u=>Math.hypot(u.x-target.x,u.y-target.y)>=u.r+target.r+.49)&&pack.every((u,i)=>pack.slice(i+1).every(v=>Math.hypot(u.x-v.x,u.y-v.y)>21.4)));
+ }
+ reset();g.spawn('core',0,300,900);g.spawn('core',1,1900,400);const tank=g.spawn('tank',0,500,1100),blocker=g.spawn('marine',0,600,1100);g.stop(blocker,true);g.issue(tank,{kind:'move',x:900,y:1100});g.invalidateNav();let stopped=0;
+ for(let i=0;i<150&&tank.order;i++){const x=tank.x,y=tank.y;tick(1);if(tank.order&&Math.hypot(tank.x-x,tank.y-y)<1e-6)stopped++;}
+ check('Tank passes a held ally without repeated stationary turn gating',tank.x>800&&stopped<5&&blocker.x===600&&blocker.y===1100,{x:tank.x,y:tank.y,stopped});
+ for(const team of [0,1]){
+  reset();g.spawn('core',0,400,1100);g.spawn('core',1,1900,400);
+  const guard=g.spawn('marine',team,700,1100),enemy=g.spawn('marine',1-team,875,1100);g.stop(enemy,true);enemy.damage=0;enemy.hp=enemy.maxhp=10000;g.invalidateNav();tick(40);
+  check('Team '+team+' idle guard approaches an automatically acquired enemy',guard.x>700&&guard.combatTarget===enemy&&!guard.order);
+  enemy.hp=0;tick(60);check('Team '+team+' idle guard returns to its acquisition position after target death',Math.hypot(guard.x-700,guard.y-1100)<1.01&&!guard.order&&!guard.combatTarget,{x:guard.x,y:guard.y});
+ }
+ reset();g.spawn('core',0,400,1100);g.spawn('core',1,1900,400);const marcher=g.spawn('marine',0,700,1100),chased=g.spawn('marine',1,875,1100);g.stop(chased,true);chased.damage=0;chased.hp=chased.maxhp=10000;g.issue(marcher,{kind:'attackMove',x:1400,y:1100});g.invalidateNav();tick(4);
+ const observer=g.spawn('marine',0,1120,1300);g.stop(observer,true);observer.damage=0;chased.x=1120;const marchX=marcher.x;tick(15);
+ check('A visible acquired target beyond personal vision does not cancel Attack Move pursuit',marcher.combatTarget===chased&&marcher.x>marchX&&marcher.order?.kind==='attackMove'&&marcher.order.x===1400);
+ chased.hp=0;tick(30);check('Attack Move resumes its original forward route after target death',marcher.order?.kind==='attackMove'&&marcher.order.x===1400&&marcher.x>marchX+100);
  return out;}''')
  for r in results:print(('PASS' if r['pass'] else 'FAIL'),r['name'],json.dumps(r.get('detail')),flush=True)
  assert all(r['pass'] for r in results),results

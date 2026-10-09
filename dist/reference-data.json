@@ -126,6 +126,14 @@
         "Discrete simulation and interpolated rendering",
         "Target priority hierarchy"
       ]
+    },
+    {
+      "title": "Extracted Core GameData acquisition and assistance defaults",
+      "url": "https://raw.githubusercontent.com/Talv/sc2-data/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/GameData.xml",
+      "covers": [
+        "CallForHelpRadius and CallForHelpPeriod",
+        "Acquire leash fields recorded separately from unresolved engine semantics"
+      ]
     }
   ],
   "screenshots": [
@@ -209,8 +217,8 @@
     "simulationHz": 22.4,
     "rendering": "Interpolated 3D scene with independent turret facing",
     "pathPlanning": "Half-unit cached A* using building contours; command-level shared corridors and bounded incremental fallback searches with round-robin service",
-    "localMovement": "Catalog speed/acceleration, observed single-point braking, Tank stationary turn gate, mean-centered compact formation goals, preserved-peer start snapshots, custom packed fallback, predictive avoidance, idle yielding and anchored Hold/Siege",
-    "workers": "Separate extraction/cargo-wait/return phases, immediate slot release, deferred wait-phase input, cargo-preserving queued successors, same-loop outbound resume, bounded depletion acquisition, exclusive harvest locks and one maintained builder",
+    "localMovement": "Catalog speed/acceleration, observed single-point braking, Tank stationary turn gate, mean-centered compact formation goals, preserved-peer start snapshots, custom packed fallback, predictive avoidance, idle yielding and anchored Hold/Siege; custom post-collision melee contact recovery, stable full-surround waiting and continuous Tank steering after initial alignment",
+    "workers": "Separate extraction/cargo-wait/return phases, immediate slot release, deferred wait-phase input, cargo-preserving queued successors, same-loop outbound resume, bounded depletion acquisition, exclusive harvest locks and one maintained builder; measured explicit Gather-versus-Smart reissue behavior and cargo retention/recovery without a drop-off",
     "workerTerrainRadius": ".3125 game units for static routing; separation/weapon radius remains .375",
     "scheduling": "Integer loop counter; stable per-loop cohort; retained bounded catch-up and capped interpolation phase; pause/resume clock resets"
   },
@@ -233,7 +241,7 @@
     "Mineral capacity-relative quarter boundaries and surface-based nearest-base saturation association are inferred policies; native thresholds/search need measurement",
     "Native bar-width ratios are used with a custom viewport scale; native projection/offset behavior and bracket-key hold/toggle behavior still need comparison",
     "Native fixed Faster loop frequency is imported; internal phase order, seeded randomized unit updates and shot jitter are not reproduced, while bounded historical 4.10 native Move/order captures are now available",
-    "Visible-attacker response uses a custom vision-bounded leash; native response memory/acquisition timing needs client comparison",
+    "Idle acquisition return uses a catalog-based 21-unit displacement bound; the native observed 21.796875-unit turning point, return interruptions and fog-loss memory are not reproduced exactly",
     "Opponent economy, scout routes, staging thresholds, Marine/Tank plan and defense decisions are custom fair policy, not Blizzard difficulty scripts",
     "Control-group cargo, empty-recall and350ms double-tap policies remain unverified; gas-worker command access preserves prototype behavior"
   ],
@@ -246,18 +254,18 @@
     "placement": "18 catalog geometry/placement cases plus actual snapped ghost",
     "workerControls": "20 checks, including preserving exact clicked-resource identity on acceptance, subsequent occupied-field distribution, every opening SCV making trips, exclusive harvesting, gas interruption and construction",
     "attackControls": "15 pursuit and attack regressions plus six actual mouse/keyboard command paths",
-    "latestChecks": "370 explicit browser checks across twenty suites, plus snapped ghost and keyboard/mobile assertions; 275 isolated scheduling, group, worker, combat, opponent, movement, animation and resource-presentation checks",
+    "latestChecks": "50 autonomous-controller browser checks, plus existing control/input/micro/order/worker/economy/formation/placement suites. All 357 isolated checks across 22 modules pass; previous presentation evidence remains recorded separately.",
     "latestStress": {
       "simulationHz": 22.4,
       "units": 120,
       "commands": 5,
       "steps": 600,
-      "meanMs": 3.022,
-      "p95Ms": 5.6,
-      "worstMs": 33.2,
+      "meanMs": 3.726,
+      "p95Ms": 8.2,
+      "worstMs": 36.5,
       "commandMsRange": [
-        1.2,
-        4.1
+        1.1,
+        8.1
       ],
       "invalidPositions": 0,
       "context": "Serial native-rate simulation stress with AI disabled; software WebGL. Simulation step budget is 44.643 ms; these measurements do not verify rendered input latency or native equivalence."
@@ -306,10 +314,11 @@
     "nativeWorkerPhases": "19 live checks: cargo/extraction split, early slot release, eight-loop return wait, deferred Move/Stop/Hold, Shift Move with cargo before deposit, final-field worker attribution and same-loop outward resume",
     "attackPhases": "Eight live checks: measured aligned Marine loop2/SCV loop4, no early hit, pre-impact Move cancellation and post-impact Move/reattack cooldown preservation",
     "tankTurning": "Four live checks: east/north/west start and completion loops, three-loop moving reversal turn gate",
-    "compactFormations": "Nine live checks: mean-centered per-unit Move/AttackMove goals, shared click metadata, next-loop acceptance, rigid first-step offsets, settled shape, goal preservation during combat and measured radius-inclusive extent boundary"
+    "compactFormations": "Nine live checks: mean-centered per-unit Move/AttackMove goals, shared click metadata, next-loop acceptance, rigid first-step offsets, settled shape, goal preservation during combat and measured radius-inclusive extent boundary",
+    "autonomousControllers": "Live two-team assistance, manual overrides, fog-safe SCV flee, crowded melee settling, Tank continuous steering, cohort defense spacing, Gather-versus-Smart extraction, destroyed resource/drop-off recovery and orphan cargo resumption"
   },
   "combatImplementation": {
-    "targeting": "Persistent explicit/acquired targets, visible acceptance snapshots, metadata/queue-preserving last-seen fallback, restored manual target preference, footprint-aware initial choice, separate scan and visible pursuit retention, Move/Follow suppression and Hold anchoring",
+    "targeting": "Persistent explicit/acquired targets, visible acceptance snapshots, metadata/queue-preserving last-seen fallback, restored manual target preference, footprint-aware initial choice, separate scan and visible pursuit retention, Move/Follow suppression and Hold anchoring; radius-inclusive allied assistance with preserved work/manual orders and observed armed-versus-unarmed incumbent response; distinct idle acquisition origin/return and visible Attack Move/Patrol pursuit",
     "weapons": "Positive windup creation phase matches measured aligned Marine/SCV first impacts; cancelable recovery, preserved cooldowns, per-hit armor, attribute bonuses, missile travel, flame line, radius-based Siege splash, minimum range, Reaper burst and regen; native repeat jitter remains omitted"
   },
   "buildingPlacement": {
@@ -328,8 +337,28 @@
   "gameplayImplementation": {
     "construction": "Incremental start-factor HP preserves incoming damage, including add-ons; newborn units receive orders on next cohort update",
     "defeat": "No surviving actual structures, including incomplete and airborne; planned placement ghosts excluded",
-    "opponent": "Shared cost/prerequisite/placement executors, local mining and gas, supply planning, scouting snapshots, staging, defense and non-reissued attack waves",
+    "opponent": "Shared cost/prerequisite/placement executors, local mining and gas, supply planning, scouting snapshots, staging, defense and non-reissued attack waves; shared player cohort command routing, persistent staging slots, preserved active combat and bounded map-only scout circuit",
     "controlGroups": "Five operations, physical digit keys, all ten slots, native left/right/Alt-right button actions, stable DOM, death pruning, retained cargo IDs and interruptible gas-worker recall",
-    "unitIntent": "Explicit resource targets, M-unit Follow, fog-safe follow and targeted attacks, active queued Patrol origins, empty Return promotion and formation-isolated pursuit"
+    "unitIntent": "Explicit resource targets, M-unit Follow, fog-safe follow and targeted attacks, active queued Patrol origins, empty Return promotion and formation-isolated pursuit; explicit Gather and Smart remain distinct command sources"
+  },
+  "nativeAutonomousResearch": {
+    "engine": "4.10.0.75689",
+    "participants": 2,
+    "controllers": "Two Participant clients; no computer strategy controller in the controlled follow-up",
+    "method": "Loop-stepped observations from both owners; submitted and executed action loops recorded separately",
+    "findings": [
+      "Assistance includes circular-unit radii",
+      "Explicit Gather preserves active extraction while Smart restarts it",
+      "SCVs mine without a drop-off and retain cargo until one appears",
+      "Mining SCVs retain their task under fire; idle SCVs flee and Hold remains anchored",
+      "Idle acquired-target engagement returns to its origin; Attack Move/Patrol continue and resume their explicit routes"
+    ],
+    "documents": [
+      "docs/native-autonomous-observations.md",
+      "docs/automatic-combat-fidelity.md",
+      "docs/worker-recovery.md",
+      "docs/idle-anchor-fidelity.md"
+    ],
+    "limits": "Historical build and bounded scenarios; custom crowd solver and opponent strategy are not native engine implementations. Binaries, maps and raw captures remain outside the public repository."
   }
 }
