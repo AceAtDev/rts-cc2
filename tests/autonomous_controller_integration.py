@@ -20,7 +20,7 @@ with sync_playwright() as p:
  tick(50);const accepted=army.map(u=>u.order?.acceptedLoop);g.opponent.update();
  check('Unchanged defense policy keeps accepted orders and acquisition intact',army.every((u,i)=>u.order?.acceptedLoop===accepted[i])&&army.some(u=>u.combatTarget===threat||u.windup?.target===threat||u.visualShotSerial>0));
  reset();g.spawn('core',0,700,1100);g.spawn('core',1,1900,400);const refinery=g.spawn('refinery',0,1000,1100);refinery.geyser={amount:2250};
- const w=g.spawn('worker',0,900,1100);w.carry=4;w.carryGas=true;g.issue(w,{kind:'gas',target:refinery});refinery.hp=0;g.invalidateNav();const x=w.x;tick(1);
+ const w=g.spawn('worker',0,900,1100);g.issue(w,{kind:'gas',target:refinery});for(let i=0;i<120&&!w.carry;i++)tick(1);if(w.carry!==4||w.order?.phase!=='home')throw Error('Fixture did not reach the real gas return boundary');refinery.hp=0;g.invalidateNav();const x=w.x;tick(1);
  check('Refinery loss during a loaded gas return preserves the trip and cargo',w.order?.kind==='gas'&&w.order.phase==='home'&&w.carry===4&&w.x<x);
  tick(100);check('Loaded gas still reaches the surviving Command Center',g.gas===4&&w.carry===0&&w.deliveredTrips===1);
  reset();const old=g.spawn('core',0,1200,1100),fallback=g.spawn('core',0,600,1100);g.spawn('core',1,1900,400);

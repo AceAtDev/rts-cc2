@@ -27,10 +27,11 @@ check('Explicit queued Gather preserves its target when activated after movement
   const f=fixture();f.crowd();const e=f.scv();f.issue(e,{kind:'move',x:50,y:50});e.orders.push({kind:'mine',node:f.clicked});
   f.complete(e);assert.equal(e.order.node,f.clicked);assert.equal(e.order.phase,'out');
 });
-check('Carried cargo returns before visiting the exact newly clicked field',()=>{
+check('Carried Gather visits its exact clicked field before returning existing cargo',()=>{
   const f=fixture();f.crowd();const e=f.scv();e.carry=5;f.issue(e,{kind:'mine',node:f.clicked});
-  assert.equal(e.order.node,f.clicked);assert.equal(e.order.phase,'home');f.workers.update(e,0);
-  assert.equal(f.moves.at(-1),f.home);assert.equal(e.order.node,f.clicked);assert.equal(e.order.phase,'out');
+  assert.equal(e.order.node,f.clicked);assert.equal(e.order.phase,'out');f.workers.update(e,0);
+  assert.equal(f.moves.at(-1),f.clicked);assert.equal(e.order.phase,'home');assert.equal(e.carry,5);assert.equal(e.harvestResource,null);
+  f.workers.update(e,0);assert.equal(f.moves.at(-1),f.home);assert.equal(e.order.node,f.clicked);assert.equal(e.order.phase,'out');
   f.workers.update(e,0);assert.equal(f.moves.at(-1),f.clicked);assert.equal(e.harvestResource,f.clicked);
 });
 check('Return Cargo resumes the saved explicit mineral identity without redistributing it',()=>{

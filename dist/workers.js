@@ -2,7 +2,7 @@ import {FASTER,SCALE,turnTowards} from './unit-profiles.js';
 
 // Times/amounts are inherited from the resource behavior catalog at Faster.
 export const HARVEST={mineralTime:2.786/FASTER,gasTime:1.981/FASTER,returnDelay:.5/FASTER,gasReturnDelay:0,mineralAmount:5,gasAmount:4,acquireRadius:10*SCALE};
-export const mineralWalking=e=>e.type==='worker'&&['mine','gas','return'].includes(e.order?.kind);
+export const mineralWalking=e=>e.type==='worker'&&['mine','gas','return','gatherPoint'].includes(e.order?.kind);
 export const ignoreWorkerCollision=(a,b)=>(mineralWalking(a)&&(!b.alwaysCheckCollision||mineralWalking(b)))||(mineralWalking(b)&&(!a.alwaysCheckCollision||mineralWalking(a)));
 export function createWorkers({entities,minerals,move,complete,issue,pay,invalidateNav}){
   const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -27,7 +27,7 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
     // the command source instead of merging both inputs into the same policy.
     if(order.kind==='mine'&&order.gatherCommand!=='smart'&&liveMineral(order.node)&&
        e.harvestResource===order.node&&order.node.harvester===e&&!e.carry&&!e.loadedIn){order.phase='harvest';return;}
-    release(e);if(order.kind==='mine'&&order.node&&order.autoAcquire)order.node=patch(e,order.node);if(['mine','gas'].includes(order.kind)){order.phase=e.carry?'home':'out';e.mineTime=0;}
+    release(e);if(order.kind==='mine'&&order.node&&order.autoAcquire)order.node=patch(e,order.node);if(['mine','gas','gatherPoint'].includes(order.kind)){order.phase='out';e.mineTime=0;}
   }
   function finishReturn(e,o){const resume=o.resume,queued=e.orders.length;complete(e);if(!queued&&resume)issue(e,{...resume,phase:'out'});return e.order?'promoted':undefined;}
   const deferring=e=>e.type==='worker'&&e.order?.phase==='waitReturn'&&e.returnWait>1e-8;
@@ -39,6 +39,15 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
   }
   function update(e,dt){
     const o=e.order;
+    if(o.kind==='gatherPoint'){
+      // Lost mineral rally targets retain a Gather point. A live local field
+      // is acquired immediately; an empty local line is visited before this
+      // order completes. Neither case searches a distant global economy.
+      const node=patch(e,{x:o.x,y:o.y});
+      if(node){o.kind='mine';o.node=node;o.phase='out';e.nav=null;return 'resumed';}
+      if(!move(e,{x:o.x,y:o.y,r:0},dt,0))return;
+      complete(e);return e.order?'promoted':undefined;
+    }
     // A queued Return may become active after the preceding gather trip has
     // already deposited. It must not create a second empty trip or payment.
     if(o.kind==='return'&&!e.carry){release(e);return finishReturn(e,o);}
@@ -76,10 +85,22 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
         // Waiting workers can acquire the field during that return delay.
         release(e);e.returnWait=o.kind==='mine'?HARVEST.returnDelay:HARVEST.gasReturnDelay;
         o.phase=e.returnWait>0?'waitReturn':'home';e.nav=null;if(available.amount<=0)invalidateNav();
+        // Gas has no mineral cargo wait. Native queued successors activate
+        // as the SCV emerges with gas, before any automatic return/deposit.
+        if(o.kind==='gas'){
+          if(e.orders.length){complete(e);return 'promoted';}
+          return 'resumed';
+        }
       }
       return;
     }
     if(move(e,resource,dt,resource.r+e.r+.2)){
+      // Native Gather with existing cargo still visits its resource target.
+      // Once there it returns that cargo without a second extraction or wait.
+      if(e.carry){
+        if(e.orders.length){complete(e);return 'promoted';}
+        o.phase='home';e.nav=null;return 'resumed';
+      }
       if(resource.harvester&&resource.harvester!==e){
         e.vx=e.vy=0;
         if(o.kind==='mine'){

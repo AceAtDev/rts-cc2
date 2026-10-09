@@ -48,7 +48,7 @@ check('A locked gas building serializes extraction without hiding waiting SCVs',
   f.workers.update(a,0);f.workers.update(b,0);assert.equal(a.insideRefinery,f.gas);assert.equal(b.insideRefinery,null);
   f.workers.update(a,HARVEST.gasTime);f.workers.update(b,0);assert.equal(b.insideRefinery,f.gas);
 });
-check('A move interruption exits gas and releases the extraction lock',()=>{
+check('Administrative order replacement exits gas and releases the extraction lock',()=>{
   const f=fixture(),e=f.scv();f.issue(e,{kind:'gas',target:f.gas});f.workers.update(e,0);
   f.issue(e,{kind:'move',x:200,y:200});assert.equal(e.insideRefinery,null);assert.equal(f.gas.harvester,null);assert.equal(e.mineTime,0);assert.equal(mineralWalking(e),false);
 });
@@ -71,9 +71,10 @@ check('Return queued movement takes precedence over saved harvesting',()=>{
   const f=fixture(),e=f.scv();e.carry=4;e.carryGas=true;f.issue(e,{kind:'return',resume:{kind:'gas',target:f.gas}});
   e.orders.push({kind:'move',x:300,y:0});f.workers.update(e,0);assert.equal(e.order.kind,'move');assert.deepEqual(f.paid,[[0,0,-4]]);
 });
-check('Gathering while carrying first deposits cargo without losing the new destination',()=>{
-  const f=fixture(),e=f.scv();e.carry=5;f.issue(e,{kind:'gas',target:f.gas});assert.equal(e.order.phase,'home');
-  f.workers.update(e,0);assert.equal(e.order.kind,'gas');assert.equal(e.order.target,f.gas);assert.equal(e.order.phase,'out');assert.equal(e.carry,0);
+check('Gathering while carrying visits the new gas destination before returning cargo',()=>{
+  const f=fixture(),e=f.scv();e.carry=5;f.issue(e,{kind:'gas',target:f.gas});assert.equal(e.order.phase,'out');
+  f.workers.update(e,0);assert.equal(e.order.kind,'gas');assert.equal(e.order.target,f.gas);assert.equal(e.order.phase,'home');assert.equal(e.carry,5);assert.equal(e.insideRefinery,null);
+  f.workers.update(e,0);assert.equal(e.order.phase,'out');assert.equal(e.carry,0);
 });
 check('A final partial mineral load never overdraws or disappears before deposit',()=>{
   const f=fixture(),e=f.scv();f.node.amount=3;f.issue(e,{kind:'mine',node:f.node});f.workers.update(e,0);
