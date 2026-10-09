@@ -28,7 +28,13 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     // A combat pursuit may temporarily interrupt an attack-move order. Its
     // formation slot belongs to the order destination, never to the target.
     const reservation=point===e.order?e.order?.arrival:null;
+    // Isolated native captures establish exact single-point arrival. Reserved
+    // crowd slots retain the existing contact tolerance: our local solver can
+    // settle a pack without demanding exact centers under neighbor repulsion.
+    if(stopAt===0&&reservation)stopAt=3;
     let p=reservation&&dist(e,point)<(e.order.arrivalRadius||0)+65?reservation:point;
+    const exactPoint=stopAt===0&&!e.flying&&point===e.order&&['move','attackMove'].includes(e.order?.kind);
+    if(!exactPoint)e.pointBrake=null;
     if(p.footprint&&stopAt>5){
       const target=p,padding=Math.max(e.r+.1,stopAt-p.r),version=navVersion();
       if(e.interaction?.target!==target||e.interaction.version!==version||e.interaction.padding!==padding||e.interaction.x!==target.x||e.interaction.y!==target.y){
@@ -47,8 +53,8 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       }
       p=e.interaction.goal;stopAt=1;
     }
-    const d=dist(e,p),tolerance=stopAt+1;
-    if(d<=tolerance){e.vx=e.vy=0;e.nav=null;e.movementRequest=null;return true;}
+    const d=dist(e,p),tolerance=exactPoint?1e-6:stopAt+1;
+    if(d<=tolerance){e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;return true;}
     let goal=p;
     if(stopAt>5){const k=(d-stopAt)/d;goal={x:e.x+(p.x-e.x)*k,y:e.y+(p.y-e.y)*k};}
     let dest=goal;
@@ -110,6 +116,15 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     }else e.movementRequest=null;
     let dx=dest.x-e.x,dy=dest.y-e.y,len=length(dx,dy);
     if(len<.001){e.nav=null;return false;}
+    if(e.turnBeforeMove&&!e.flying){
+      const heading=Math.atan2(dy,dx),error=Math.atan2(Math.sin(heading-e.angle),Math.cos(heading-e.angle));
+      if(Math.abs(error)>1e-6){
+        e.vx=e.vy=0;
+        e.angle=turnTowards(e.angle,heading,e.stationaryTurnRate||e.turnRate||20,dt);
+        const remainingAngle=Math.atan2(Math.sin(heading-e.angle),Math.cos(heading-e.angle));
+        if(Math.abs(remainingAngle)>1e-6)return false;
+      }
+    }
     const speed=e.speed*(e.stim?1.5:1)*(e.slow? .5:1);
     let vx=dx/len*speed,vy=dy/len*speed;
     const ux=vx/speed,uy=vy/speed;
@@ -140,16 +155,33 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       }
     }
     const vl=length(vx,vy);if(vl>speed){vx*=speed/vl;vy*=speed/vl;}
-    // Brake within this frame, rather than applying a long exponential arrival
-    // tail. This also prevents a fast unit overshooting a queued waypoint.
+    // Native 4.10 isolated Move traces show exact point endpoints and SCV
+    // longitudinal braking at forward acceleration, not lateral acceleration.
+    // The half-step exit margin is the inclusive discrete stopping ramp. It
+    // prevents repeated acceleration/deceleration switches near an endpoint.
     const remaining=Math.max(0,d-stopAt),limit=remaining/dt;
+    const oldSpeed=length(e.vx,e.vy),deceleration=e.deceleration>0?e.deceleration:e.acceleration||100000;
+    let pointBraking=false;
+    if(exactPoint){
+      if(e.pointBrake?.order!==e.order||e.pointBrake.x!==p.x||e.pointBrake.y!==p.y)e.pointBrake={order:e.order,x:p.x,y:p.y,active:false};
+      const finalLeg=dist(dest,goal)<.001;
+      const stoppingDistance=oldSpeed*oldSpeed/(2*deceleration)+(e.pointBrake.active?oldSpeed*dt/2:0);
+      pointBraking=e.pointBrake.active=finalLeg&&remaining<stoppingDistance;
+      if(pointBraking){
+        const wanted=Math.max(0,oldSpeed-deceleration*dt),desired=length(vx,vy);
+        if(desired>wanted){vx*=wanted/desired;vy*=wanted/desired;}
+      }
+    }
     const desired=length(vx,vy);if(desired>limit){vx*=limit/desired;vy*=limit/desired;}
-    const oldSpeed=length(e.vx,e.vy),newSpeed=length(vx,vy);
-    const accel=(newSpeed>oldSpeed?e.acceleration:e.lateralAcceleration)||100000;
+    const newSpeed=length(vx,vy);
+    const accel=(pointBraking?deceleration:newSpeed>oldSpeed?e.acceleration:e.lateralAcceleration)||100000;
     const reversing=vx*e.vx+vy*e.vy<0&&e.acceleration>10000;
     const change=length(vx-e.vx,vy-e.vy),blend=reversing?1:Math.min(1,accel*dt/(change||1));
     e.vx+=(vx-e.vx)*blend;e.vy+=(vy-e.vy)*blend;
     let next={x:clamp(e.x+e.vx*dt,e.r,world.w-e.r),y:clamp(e.y+e.vy*dt,e.r,world.h-e.r)};
+    if(exactPoint&&dist(dest,goal)<.001&&(e.vx*dx+e.vy*dy)/len*dt>=len&&clear(e,goal,radius)){
+      next={...goal};e.vx=(next.x-e.x)/dt;e.vy=(next.y-e.y)/dt;
+    }
     if(!e.flying&&!clear(e,next,radius)) {
       const sx={x:next.x,y:e.y},sy={x:e.x,y:next.y};
       if(clear(e,sx,radius)){next=sx;e.vy=0;}

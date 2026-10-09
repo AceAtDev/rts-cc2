@@ -24,8 +24,9 @@ export const PROFILES = {
     {range:5,scan:5.5,period:1.10009765625,point:0,backswing:.75,damage:4,burst:2,burstInterval:.122/FASTER}),
   hellion: profile(4.25,.625,1000,46,720,['Light','Mechanical'],
     {range:5,scan:5.5,period:2.5,point:.25,backswing:.75,damage:8,bonus:{Light:6},line:6.5*SCALE,lineRadius:.15*SCALE,turret:true}),
-  tank: profile(2.25,.875,1000,64,360,['Armored','Mechanical'],
+  tank: {...profile(2.25,.875,1000,64,360,['Armored','Mechanical'],
     {range:7,scan:7.5,period:1.0400390625,point:.167,backswing:.5,damage:15,bonus:{Armored:10},turret:true}),
+    turnBeforeMove:true,stationaryTurnRate:720*Math.PI/180*FASTER},
 };
 export const SIEGE_WEAPON = {range:13*SCALE,scan:13*SCALE,minimum:2*SCALE,
   period:3/FASTER,point:.167/FASTER,backswing:.5/FASTER,damage:40,
