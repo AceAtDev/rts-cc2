@@ -2,14 +2,14 @@ import {GRID} from './geometry.js';
 
 // This is a fair, bounded policy for this map/subset, not Blizzard's AI script.
 export function createOpponentAI({team=1,defs,entities,minerals,geysers,clock,
-  visible,used,capacity,wallet,placement,build,train,addon,issue,world}){
+  visible,used,capacity,wallet,placement,build,train,addon,issue,issueGroup,world}){
   const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const alive=e=>e.hp>0&&!e.loadedIn;
   const assigned=w=>w.order?.kind==='return'?w.order.resume:w.order;
-  let memories=new Map(),commands=new Map(),wave=null,lastWave=-Infinity,
-    scoutId=null,nextScout=0,defendUntil=0,lastBuild=new Map(),mode='gather';
+  let memories=new Map(),commands=new Map(),gatherSlots=new Map(),wave=null,lastWave=-Infinity,
+    scoutId=null,scoutStep=0,nextScout=0,defendUntil=0,defensePoint=null,lastBuild=new Map(),mode='gather';
   const clampPoint=p=>({x:Math.max(2*GRID,Math.min(world.w-2*GRID,p.x)),y:Math.max(2*GRID,Math.min(world.h-2*GRID,p.y))});
-  function reset(){memories.clear();commands.clear();lastBuild.clear();wave=null;lastWave=-Infinity;scoutId=null;nextScout=0;defendUntil=0;mode='gather';}
+  function reset(){memories.clear();commands.clear();gatherSlots.clear();lastBuild.clear();wave=null;lastWave=-Infinity;scoutId=null;scoutStep=0;nextScout=0;defendUntil=0;defensePoint=null;mode='gather';}
   function observe(all,now){
     const seen=all.filter(e=>e.team!==team&&alive(e)&&visible(team,e));
     for(const e of seen)memories.set(e.id,{id:e.id,type:e.type,building:!!e.building,x:e.x,y:e.y,at:now});
@@ -17,12 +17,38 @@ export function createOpponentAI({team=1,defs,entities,minerals,geysers,clock,
     for(const [id,m] of memories)if((!m.building&&now-m.at>12)||(visible(team,m)&&!seenIds.has(id)))memories.delete(id);
     return seen;
   }
-  function command(e,p,role){
-    if(e.sieged||e.transform)return;
+  function intent(e,p,role){
+    if(e.sieged||e.transform)return null;
     const previous=commands.get(e.id),same=previous?.role===role&&distance(previous,p)<GRID;
     // Keep existing acquisition, windup and pursuit intact between policy ticks.
-    if(same&&(e.order||distance(e,p)<GRID*1.5))return;
-    issue(e,{kind:'attackMove',x:p.x,y:p.y});commands.set(e.id,{...p,role});
+    if(same&&(e.order||distance(e,previous.arrival||p)<GRID*1.5))return null;
+    const target=e.combatTarget||e.windup?.target;
+    if(previous?.role===role&&target?.hp>0&&target.team!==team&&visible(team,target))return null;
+    return{kind:'attackMove',x:p.x,y:p.y};
+  }
+  function record(e,p,role){
+    const o=e.order,arrival=o?.arrival||(o&&Number.isFinite(o.x)&&Number.isFinite(o.y)?{x:o.x,y:o.y}:p);
+    commands.set(e.id,{x:p.x,y:p.y,role,arrival:{x:arrival.x,y:arrival.y}});
+  }
+  function command(e,p,role){const o=intent(e,p,role);if(o){issue(e,o);record(e,p,role);}}
+  function commandGroup(units,p,role){
+    const entries=units.map(u=>({u,o:intent(u,p,role)})).filter(entry=>entry.o);
+    if(!entries.length)return;
+    // Match the player's shared goal, arrival reservations and routing admission.
+    if(issueGroup)issueGroup(entries,{x:p.x,y:p.y});else for(const {u,o} of entries)issue(u,o);
+    for(const {u} of entries)record(u,p,role);
+  }
+  function gatherPoint(e,stage){
+    if(!gatherSlots.has(e.id)){
+      const usedSlots=new Set(gatherSlots.values());let index=0;while(usedSlots.has(index))index++;
+      gatherSlots.set(e.id,index);
+    }
+    let index=gatherSlots.get(e.id);
+    if(!index)return{...stage};
+    index--;for(let ring=1;ring<=10;ring++)for(let y=-ring;y<=ring;y++)for(let x=-ring;x<=ring;x++)if(Math.max(Math.abs(x),Math.abs(y))===ring){
+      if(index--===0)return clampPoint({x:stage.x+x*2*GRID,y:stage.y+y*2*GRID});
+    }
+    return{...stage};
   }
   function propose(type,base,now,preferred=null){
     const d=defs[type],cash=wallet(team);
@@ -66,7 +92,7 @@ export function createOpponentAI({team=1,defs,entities,minerals,geysers,clock,
     for(const b of bases){const node=localFields.filter(n=>distance(n,b)<14*GRID).sort((a,c)=>(fieldLoads.get(a)||0)-(fieldLoads.get(c)||0)||distance(a,b)-distance(c,b))[0];if(node)b.rally={kind:'mine',node,x:node.x,y:node.y};else b.rally=null;}
     const towards={x:world.w/2-base.x,y:world.h/2-base.y},len=Math.max(1,Math.hypot(towards.x,towards.y)),stage=clampPoint({x:base.x+towards.x/len*7*GRID,y:base.y+towards.y/len*7*GRID});
     const producers=own.filter(e=>['barracks','factory'].includes(e.type)&&e.ready&&!e.flying);
-    for(const b of producers)b.rally={kind:'move',...stage};
+    for(const b of producers)b.rally={kind:'attackMove',...stage};
     const pendingSupply=own.filter(e=>e.type==='relay'&&!e.ready).reduce((sum,e)=>sum+(e.cap||8),0);
     const queuedSupply=own.reduce((sum,e)=>sum+(e.queue||[]).filter(q=>!q.started).reduce((n,q)=>n+(defs[q.type]?.supply||0),0),0);
     if(capacity(team)<200&&capacity(team)+pendingSupply-used(team)-queuedSupply<Math.max(4,producers.length*2+1))propose('relay',base,now);
@@ -79,31 +105,40 @@ export function createOpponentAI({team=1,defs,entities,minerals,geysers,clock,
     if(fact&&!fact.addon&&!(fact.queue||[]).length)addon(fact,'techlab');
     for(const b of producers)if((b.queue||[]).length<1){if(b.type==='barracks')train('marine',b);else if(b.addon?.ready&&b.addon.type==='techlab')train('tank',b);}
     const liveIds=new Set(own.map(e=>e.id));for(const id of commands.keys())if(!liveIds.has(id))commands.delete(id);
+    for(const id of gatherSlots.keys())if(!liveIds.has(id))gatherSlots.delete(id);
     if(!liveIds.has(scoutId))scoutId=null;
-    const threats=seen.filter(e=>!e.building&&e.type!=='worker'&&bases.some(b=>distance(e,b)<15*GRID));
+    const threats=seen.filter(e=>!e.building&&bases.some(b=>distance(e,b)<15*GRID)&&
+      (e.type!=='worker'||own.some(u=>u.lastAttacker===e&&now-(u.lastDamageAt??-Infinity)<2)));
     if(threats.length){
-      defendUntil=now+6;wave=null;mode='defend';const target=threats.reduce((a,e)=>!a||distance(e,base)<distance(a,base)?e:a,null);
-      for(const e of army)command(e,target,'defend');return;
+      defendUntil=now+6;wave=null;scoutId=null;mode='defend';const target=threats.reduce((a,e)=>!a||distance(e,base)<distance(a,base)?e:a,null);
+      defensePoint={x:target.x,y:target.y};commandGroup(army,defensePoint,'defend');return;
     }
-    if(now<defendUntil){mode='defend';return;}
+    if(now<defendUntil){mode='defend';if(defensePoint)commandGroup(army,defensePoint,'defend');return;}
     const knownTarget=[...memories.values()].filter(m=>m.building).sort((a,b)=>(a.type==='core'?-1:0)-(b.type==='core'?-1:0)||distance(a,base)-distance(b,base))[0];
+    if(knownTarget)scoutId=null;
     if(wave){
       const members=army.filter(e=>wave.ids.has(e.id));
       if(members.length<Math.ceil(wave.initial/2)||members.every(e=>distance(e,wave.target)<4*GRID&&!e.order)){wave=null;lastWave=now;}
-      else {mode='attack';for(const e of members)command(e,wave.target,'attack');}
+      else {mode='attack';commandGroup(members,wave.target,'attack');}
     }
     const reserves=army.filter(e=>!wave?.ids.has(e.id));
-    if(!wave&&knownTarget&&reserves.length>=8&&now-lastWave>45&&reserves.filter(e=>distance(e,stage)<6*GRID).length>=Math.ceil(reserves.length*.75)){
+    const staged=reserves.filter(e=>distance(e,commands.get(e.id)?.role==='gather'?commands.get(e.id).arrival:gatherPoint(e,stage))<3*GRID);
+    if(!wave&&knownTarget&&reserves.length>=8&&now-lastWave>45&&staged.length>=Math.ceil(reserves.length*.75)){
       wave={ids:new Set(reserves.map(e=>e.id)),initial:reserves.length,target:{x:knownTarget.x,y:knownTarget.y}};lastWave=now;scoutId=null;mode='attack';
-      for(const e of reserves)command(e,wave.target,'attack');return;
+      commandGroup(reserves,wave.target,'attack');return;
     }
     if(!knownTarget&&!wave&&army.length>=3&&now>=nextScout){
-      const scout=army.find(e=>e.id===scoutId)||army.find(e=>e.type==='reaper')||army[0];scoutId=scout.id;nextScout=now+20;
+      const existing=army.find(e=>e.id===scoutId),scout=existing||army.find(e=>e.type==='reaper')||army[0];
+      const previous=commands.get(scout.id);
+      if(existing&&!scout.order&&previous?.role==='scout'&&distance(scout,previous.arrival)<GRID*1.5)scoutStep++;
+      else if(!existing)scoutStep=0;
+      scoutId=scout.id;nextScout=now+20;
       // This two-spawn map's opposite start is map knowledge, not live entity knowledge.
-      command(scout,clampPoint({x:world.w-base.x,y:world.h-base.y}),'scout');
+      const circuit=[{x:world.w-base.x,y:world.h-base.y},...[ [.25,.25],[.75,.75],[.25,.75],[.75,.25] ].map(([x,y])=>({x:x*world.w,y:y*world.h})).filter(p=>distance(p,base)>14*GRID)];
+      command(scout,clampPoint(circuit[scoutStep%circuit.length]),'scout');
     }
     if(!wave)mode='gather';
-    for(const [index,e] of reserves.entries())if(e.id!==scoutId)command(e,clampPoint({x:stage.x+(index%4-1.5)*GRID,y:stage.y+(Math.floor(index/4)-1)*GRID}),'gather');
+    for(const e of reserves)if(e.id!==scoutId)command(e,gatherPoint(e,stage),'gather');
   }
   return{update,reset,state:()=>({mode,knownEnemies:[...memories.values()].map(m=>({...m})),waveSize:wave?.ids.size||0,scoutId})};
 }
