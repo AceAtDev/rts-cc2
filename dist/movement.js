@@ -1,17 +1,18 @@
 import {ignoreWorkerCollision} from './workers.js';
 import {contactPoint} from './geometry.js';
-import {turnTowards,terrainRadius} from './unit-profiles.js';
+import {turnTowards,terrainRadius,SCALE} from './unit-profiles.js';
 
 // Custom local crowd solver, not Blizzard's navigation implementation.
 export function createMovement({entities,world,clear,openPoint,path,navVersion}) {
-  let cells=new Map(), requests=0;
+  let cells=new Map(), starts=new Map(), requests=0;
   const length=(x,y)=>Math.hypot(x,y);
   const dist=(a,b)=>length(a.x-b.x,a.y-b.y);
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function begin() {
-    requests=0;cells=new Map();path.begin?.();
+    requests=0;cells=new Map();starts=new Map();path.begin?.();
     for(const e of entities()) if(!e.building&&!e.loadedIn&&!e.insideRefinery&&e.hp>0&&!e.flying) {
       const key=Math.floor(e.x/56)+','+Math.floor(e.y/56);
+      starts.set(e,{x:e.x,y:e.y});
       if(!cells.has(key))cells.set(key,[]);cells.get(key).push(e);
     }
   }
@@ -29,9 +30,9 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     // formation slot belongs to the order destination, never to the target.
     const reservation=point===e.order?e.order?.arrival:null;
     // Isolated native captures establish exact single-point arrival. Reserved
-    // crowd slots retain the existing contact tolerance: our local solver can
-    // settle a pack without demanding exact centers under neighbor repulsion.
-    if(stopAt===0&&reservation)stopAt=3;
+    // contact slots retain the existing tolerance. Offset slots outside the
+    // repulsion halo can finish exactly without demanding impossible centers.
+    if(stopAt===0&&reservation&&!e.order.exactFormation)stopAt=3;
     let p=reservation&&dist(e,point)<(e.order.arrivalRadius||0)+65?reservation:point;
     const exactPoint=stopAt===0&&!e.flying&&point===e.order&&['move','attackMove'].includes(e.order?.kind);
     if(!exactPoint)e.pointBrake=null;
@@ -130,7 +131,10 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     const ux=vx/speed,uy=vy/speed;
     if(!e.flying)for(const b of neighbors(e)) {
       if(b===e||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(e,b))continue;
-      const bx=b.x-e.x,by=b.y-e.y,dd=length(bx,by),gap=e.r+b.r+.5;
+      const formationPeers=point===e.order&&e.order?.formation==='preserved'&&b.order?.formation==='preserved'&&
+        e.order.batch!==undefined&&e.order.batch===b.order.batch&&e.team===b.team&&!e.combatTarget&&!b.combatTarget;
+      const aPosition=formationPeers?(starts.get(e)||e):e,bPosition=formationPeers?(starts.get(b)||b):b;
+      const bx=bPosition.x-aPosition.x,by=bPosition.y-aPosition.y,dd=length(bx,by),gap=e.r+b.r+.5;
       if(dd<.001)continue;
       const forward=bx*ux+by*uy,cross=bx*uy-by*ux;
       const settled=b.arrived&&b.arrivalBatch&&b.arrivalBatch===e.arrivalBatch&&!b.order;
@@ -217,10 +221,38 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
   return {begin,neighbors,move,collision};
 }
 
-// Compact hexagonal landing positions prevent overlapping footprints without
-// forcing a march formation. This is our arrival policy, not an SC2 data field.
+// Native 4.10 ground Move/AttackMove probes preserve mean-centered offsets when the full
+// footprint AABB fits in 6 game units on both axes. This is an observed rule,
+// not a claim about every current-patch formation condition.
+export const COMPACT_FORMATION_EXTENT=6*SCALE;
+// Spread or obstructed layouts retain the custom compact landing fallback.
 export function reserveDestinations(movers,point,reachable) {
   if(movers.length<2)return;
+  if(movers.every(m=>['move','attackMove'].includes(m.o.kind)&&!m.u.building&&!m.u.flying&&!m.u.sieged&&!m.u.transform)){
+    const x0=Math.min(...movers.map(m=>m.u.x-m.u.r)),x1=Math.max(...movers.map(m=>m.u.x+m.u.r));
+    const y0=Math.min(...movers.map(m=>m.u.y-m.u.r)),y1=Math.max(...movers.map(m=>m.u.y+m.u.r));
+    if(Math.max(x1-x0,y1-y0)<=COMPACT_FORMATION_EXTENT+1e-6){
+      const center={x:movers.reduce((sum,m)=>sum+m.u.x,0)/movers.length,
+        y:movers.reduce((sum,m)=>sum+m.u.y,0)/movers.length};
+      const slots=movers.map(m=>({x:point.x+m.u.x-center.x,y:point.y+m.u.y-center.y}));
+      let valid=slots.every((p,i)=>{const q=reachable(p,terrainRadius(movers[i].u));return Math.hypot(p.x-q.x,p.y-q.y)<.01;});
+      for(let i=0;i<slots.length&&valid;i++)for(let j=i+1;j<slots.length;j++){
+        if(Math.hypot(slots[i].x-slots[j].x,slots[i].y-slots[j].y)<movers[i].u.r+movers[j].u.r+.5-1e-6){valid=false;break;}
+      }
+      if(valid){
+        const radius=Math.max(...slots.map(s=>Math.hypot(s.x-point.x,s.y-point.y)));
+        let exact=true;
+        for(let i=0;i<slots.length&&exact;i++)for(let j=i+1;j<slots.length;j++){
+          if(Math.hypot(slots[i].x-slots[j].x,slots[i].y-slots[j].y)<movers[i].u.r+movers[j].u.r+3.5){exact=false;break;}
+        }
+        movers.forEach((m,i)=>{
+          m.o.x=slots[i].x;m.o.y=slots[i].y;m.o.arrival={...slots[i]};m.o.arrivalRadius=radius;
+          m.o.formation='preserved';m.o.groupGoal={...point};m.o.exactFormation=exact;
+        });
+        return;
+      }
+    }
+  }
   const spacing=Math.max(...movers.map(m=>m.u.r*2+.75)),slots=[{...point}];
   for(let ring=1;slots.length<movers.length;ring++) {
     for(let side=0;side<6;side++)for(let step=0;step<ring&&slots.length<movers.length;step++) {
@@ -232,6 +264,6 @@ export function reserveDestinations(movers,point,reachable) {
   for(const m of [...movers].sort((a,b)=>Math.hypot(a.u.x-point.x,a.u.y-point.y)-Math.hypot(b.u.x-point.x,b.u.y-point.y))) {
     let best=0;
     for(let i=1;i<slots.length;i++)if(Math.hypot(m.u.x-slots[i].x,m.u.y-slots[i].y)<Math.hypot(m.u.x-slots[best].x,m.u.y-slots[best].y))best=i;
-    m.o.arrival=reachable(slots.splice(best,1)[0],terrainRadius(m.u));m.o.arrivalRadius=radius;
+    m.o.arrival=reachable(slots.splice(best,1)[0],terrainRadius(m.u));m.o.arrivalRadius=radius;m.o.formation='packed';m.o.exactFormation=false;
   }
 }
