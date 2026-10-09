@@ -6,13 +6,15 @@ export const mineralWalking=e=>e.type==='worker'&&['mine','gas','return'].includ
 export const ignoreWorkerCollision=(a,b)=>(mineralWalking(a)&&(!b.alwaysCheckCollision||mineralWalking(b)))||(mineralWalking(b)&&(!a.alwaysCheckCollision||mineralWalking(a)));
 export function createWorkers({entities,minerals,move,complete,issue,pay,invalidateNav}){
   const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  const liveMineral=n=>!!n&&n.amount>0&&(n.hp===undefined||n.hp>0);
+  const owner=n=>{const w=n.harvester;return w?.hp>0&&!w.loadedIn&&w.harvestResource===n&&w.order?.phase==='harvest'?w:null;};
   function release(e){
     const resource=e.harvestResource;if(resource?.harvester===e)resource.harvester=null;
     e.harvestResource=null;e.insideRefinery=null;e.mineTime=0;e.returnWait=0;
   }
   const load=(n,e)=>entities().filter(w=>w!==e&&w.hp>0&&w.type==='worker'&&w.order?.kind==='mine'&&w.order.node===n).length;
   function patch(e,preferred=null,availableOnly=false){
-    const choices=minerals().filter(n=>n.amount>0&&(!preferred||distance(n,preferred)<=HARVEST.acquireRadius)&&(!availableOnly||!n.harvester||n.harvester===e));
+    const choices=minerals().filter(n=>liveMineral(n)&&(!preferred||distance(n,preferred)<=HARVEST.acquireRadius)&&(!availableOnly||!owner(n)||owner(n)===e));
     if(!choices.length)return null;
     // Automatic acquisition searches a local cluster. An explicit Gather
     // target is preserved by accept() until arrival or resource exhaustion.
@@ -49,10 +51,10 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
     }
     // Keep reacquisition local to the depleted field. A distant expansion must
     // not silently replace a finished mineral line merely because it exists.
-    if(o.kind==='mine'&&(!resource||resource.amount<=0)){release(e);resource=o.node=patch(e,resource||e);e.nav=null;if(!resource){complete(e);return;}}
-    if(o.kind==='gas'&&(!resource||resource.hp<=0||resource.geyser?.amount<=0)){release(e);complete(e);return;}
+    if(o.kind==='mine'&&!liveMineral(resource)){release(e);resource=o.node=patch(e,resource||e);o.phase='out';e.nav=null;if(!resource){complete(e);return;}}
+    if(o.kind==='gas'&&(!resource||resource.hp<=0||!resource.geyser||resource.geyser.amount<=0)){release(e);complete(e);return;}
     if(o.kind==='gas'&&!resource.ready){release(e);move(e,resource,dt,resource.r+e.r+.2);return;}
-    if(resource.harvester&&(resource.harvester.hp<=0||resource.harvester.harvestResource!==resource))resource.harvester=null;
+    if(resource.harvester&&!owner(resource))resource.harvester=null;
     if(o.phase==='harvest'){
       if(e.harvestResource!==resource){o.phase='out';return;}
       e.vx=e.vy=0;e.angle=turnTowards(e.angle,Math.atan2(resource.y-e.y,resource.x-e.x),e.turnRate,dt);e.mineTime+=dt;
