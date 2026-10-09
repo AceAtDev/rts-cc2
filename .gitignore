@@ -1,0 +1,18 @@
+# Local environment and hosting configuration
+.env
+.env.*
+!.env.example
+.openai/
+# Python and browser test output
+__pycache__/
+*.py[cod]
+.venv/
+scratch/
+artifacts/
+playwright-report/
+test-results/
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

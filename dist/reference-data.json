@@ -1,0 +1,134 @@
+{
+  "referenceProfile": "StarCraft II multiplayer, English Standard Terran",
+  "researchedOn": "2026-10-09",
+  "sources": [
+    {
+      "title": "Blizzard: Basic Unit Controls",
+      "url": "https://news.blizzard.com/en-us/article/4552956/game-guide-basic-unit-controls",
+      "covers": [
+        "Move versus Attack",
+        "Stop versus Hold",
+        "Patrol"
+      ]
+    },
+    {
+      "title": "Blizzard: Special Controls",
+      "url": "https://news.blizzard.com/en-us/article/4552955/game-guide-special-control",
+      "covers": [
+        "Selection modifiers",
+        "Control groups",
+        "Shift order queues",
+        "Camera controls"
+      ]
+    },
+    {
+      "title": "Blizzard: Simplified Controls",
+      "url": "https://news.blizzard.com/en-us/article/6640645/game-guide-simplified-controls"
+    },
+    {
+      "title": "Blizzard: Buildings",
+      "url": "https://news.blizzard.com/en-us/article/4488317/game-guide-buildings"
+    },
+    {
+      "title": "Blizzard: Terran Lift Off",
+      "url": "https://news.blizzard.com/en-us/article/5740266/game-guide-terran-lift-off"
+    },
+    {
+      "title": "Blizzard: 5.0.17 patch notes",
+      "url": "https://news.blizzard.com/en-gb/article/24309308/starcraft-ii-5-0-17-patch-notes",
+      "covers": [
+        "12 starting workers",
+        "15 Command Center supply",
+        "Mineral and geyser amounts"
+      ]
+    },
+    {
+      "title": "Current maintained hotkey editor data",
+      "url": "https://github.com/jcfieldsdev/starcraft2-hotkey-editor/blob/master/www/scripts/data.js",
+      "covers": [
+        "Fixed 5 by 3 command cards",
+        "English Standard hotkeys"
+      ]
+    },
+    {
+      "title": "Game-extracted older hotkey data",
+      "url": "https://github.com/BeedeBdoo/Sc2HotkeyData/tree/master/data"
+    }
+  ],
+  "screenshots": [
+    {
+      "url": "https://www.arbse.net/Files/StarCraft2/id350/starcraft_units_05.JPG",
+      "studied": [
+        "Marine card",
+        "Asymmetric Terran console",
+        "Resource strip",
+        "Selection information"
+      ]
+    },
+    {
+      "url": "https://us.media.blizzard.com/sc2/media/screenshots/guide/terran/terran-liftoff01.jpg",
+      "studied": [
+        "Flying Command Center command slots"
+      ]
+    },
+    {
+      "url": "https://i.imgur.com/JQqR5iR.jpg",
+      "studied": [
+        "Production queue",
+        "Control-group badges",
+        "Modern HUD proportions"
+      ]
+    },
+    {
+      "url": "https://terrancraft.com/wp-content/uploads/2017/02/screenshot2017-02-16-21_34_50.jpg",
+      "studied": [
+        "Sieged Tank command slots"
+      ]
+    }
+  ],
+  "assetSources": [
+    {
+      "files": "assets/icons/btn-*.png",
+      "url": "https://github.com/jcfieldsdev/starcraft2-hotkey-editor",
+      "copyright": "Game icon artwork belongs to Blizzard Entertainment; editor license stored separately."
+    },
+    {
+      "files": "assets/icons/icon-*.png",
+      "url": "https://github.com/MatthewMarinets/ap_sc2_icons",
+      "copyright": "Blizzard Entertainment; source notice is stored in assets/icons/BLIZZARD-LICENSE.txt"
+    },
+    {
+      "files": "vendor/three.module.js",
+      "url": "https://github.com/mrdoob/three.js/tree/r169",
+      "license": "MIT; vendor/THREE-LICENSE.txt"
+    }
+  ],
+  "implementedUnits": [
+    "SCV",
+    "Marine",
+    "Marauder",
+    "Reaper",
+    "Hellion",
+    "Siege Tank"
+  ],
+  "movementImplementation": {
+    "simulationHz": 60,
+    "rendering": "Interpolated 3D scene",
+    "pathPlanning": "Radius-aware A* with cached walkability grids, route caching, line-of-sight smoothing, and a 2.5 ms per-step planning budget",
+    "localMovement": "Spatial hashing, predictive sidesteps, velocity acceleration, stable formation assignment, crowd-aware arrivals, anchored Hold/Siege, three collision settling passes"
+  },
+  "knownDifferences": [
+    "Custom 3D models and terrain rather than the original game assets",
+    "Custom steering and pathfinding rather than the proprietary SC2 solver; exact feel is not established",
+    "Terran subset only; unsupported reference buttons are dimmed and explain their status",
+    "No multiplayer, air combat, ramps, full tech tree, campaigns, or other races",
+    "Factory Tank position follows the current editor data; older extracted data uses a different position",
+    "Unit statistics and durations are modeled but not a complete patch-data import"
+  ],
+  "verification": {
+    "browser": "Chromium with software WebGL",
+    "controls": "Selection modifiers, Standard hotkeys, control-group stealing, subgroups, order queues, minimap commands, camera locations, idle workers",
+    "movement": "24 units route around rock and settle; held units remain anchored; rapid reversal responds; 120-unit repeated-command stress exercise",
+    "gameplay": "Gathering, construction queue back to mining, producer rally, Tech Lab requirement, Stim research gate, siege mode, resource-limited AI opening"
+  }
+}
