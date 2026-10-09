@@ -24,6 +24,18 @@ check('Order acceptance never snapshots a target already hidden',()=>{
   const a=unit(1,500),b=unit(2,700,1),h=make([a,b]);b.hidden=true;a.order={kind:'attack',target:b};
   h.combat.acceptOrder(a);assert.equal(a.attackLastSeen,undefined);
 });
+check('Activation preserves an accepted queued last-seen seed when its target is now hidden',()=>{
+  const a=unit(1,500),b=unit(2,1100,1),h=make([a,b]);b.hidden=true;
+  a.order={kind:'attack',target:b,lastSeen:{x:700,y:500}};a.attackLastSeen={...a.order.lastSeen};
+  h.combat.acceptOrder(a);h.step(a);assert.equal(a.order.kind,'attackMove');assert.equal(a.order.x,700);
+  assert.deepEqual(a.order.lastSeen,{x:700,y:500});
+});
+check('Active manual attacks refresh their order endpoint only while the target is visible',()=>{
+  const a=unit(1,500),b=unit(2,700,1),h=make([a,b]);a.order={kind:'attack',target:b,lastSeen:{x:660,y:500}};
+  h.step(a);assert.deepEqual(a.order.lastSeen,{x:700,y:500});b.x=730;h.step(a);
+  assert.deepEqual(a.order.lastSeen,{x:730,y:500});b.hidden=true;b.x=1100;h.step(a);
+  assert.deepEqual(a.order.lastSeen,{x:730,y:500});assert.equal(a.order.x,730);
+});
 check('Fog fallback preserves command-loop metadata and the queued successor',()=>{
   const a=unit(1,500),b=unit(2,700,1),h=make([a,b]);
   a.order={kind:'attack',target:b,acceptedLoop:42,startedLoop:43,batch:8};

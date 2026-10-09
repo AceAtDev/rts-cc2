@@ -1,7 +1,7 @@
 import {surface} from './geometry.js';
 import {SIEGE_WEAPON,FASTER,SCALE,turnTowards} from './unit-profiles.js';
 
-export function createCombat({entities,visible,move,research,shots,clock}) {
+export function createCombat({entities,visible,move,research,shots,clock,onDamage}) {
   let missiles=[],processedThisLoop=new Set(),idleThisLoop=new Set(),helpThisLoop=new Set();
   // Core CGame defaults; exact native arbitration/phase ordering is separate.
   const helpRadius=4*SCALE,helpPeriod=2/FASTER,idleMovementLimit=21*SCALE;
@@ -26,6 +26,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     for(const [attr,bonus] of Object.entries(w.bonus||{}))if(t.attributes?.includes(attr))amount+=bonus;
     if(upgrades.weapons&&['marine','marauder','reaper'].includes(e.type))amount+=e.type==='marauder'&&t.attributes?.includes('Armored')?2:1;
     const armor=(t.armor||0)+(defense.armor&&['marine','marauder','reaper'].includes(t.type)?1:0);
+    const hpBefore=t.hp;
     t.hp-=Math.max(.5,amount*fraction-armor);t.lastDamageAt=clock();t.lastAttacker=e;t.lastDamageSourcePosition={x:origin.x,y:origin.y};
     if(e.team!==t.team&&clock()-(t.lastCombatHelpAt??-Infinity)>=helpPeriod) {
       t.lastCombatHelpAt=clock();const call={attacker:e,at:clock()};
@@ -36,6 +37,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     }
     if(t.hp<=0)e.kills++;
     if(e.type==='marauder'&&upgrades.concussiveResearch&&!t.building&&!t.attributes?.includes('Massive'))t.slow=1.5/FASTER;
+    onDamage?.(e,t,Math.min(hpBefore,hpBefore-t.hp));
   }
   function impact(e,t,w,point,origin=e) {
     if(w.line) {
@@ -145,11 +147,15 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     if(!manual&&(e.acquireTime<=0||!target)) {
       e.acquireTime=.1;
       let best=target;
+      // AttackMove/Patrol contribute to the nearby fight instead of following
+      // an equally ranked retreater past an available in-range opponent. Keep
+      // admitted windups and explicit focus-fire/idle target persistence.
+      const replaceRetreating=['attackMove','patrol'].includes(o?.kind)&&target&&!inRange(e,target,w,windupSlop(target));
       for(const t of entities())if(valid(e,t,w)&&surface(e,t).distance-e.r<=Math.max(w.scan,w.range)&&surface(e,t).distance-e.r>=w.minimum) {
         if(rangeOnly&&!inRange(e,t,w))continue;
-        // Keep an equally important target. A newly closer unit never steals
-        // an existing valid attack. Threat priority can supersede a structure.
-        if(!best||priority(t)>priority(best)||!target&&priority(t)===priority(best)&&surface(e,t).distance<surface(e,best).distance)best=t;
+        const closer=!best||surface(e,t).distance<surface(e,best).distance;
+        if(!best||priority(t)>priority(best)||priority(t)===priority(best)&&
+          (!target&&closer||replaceRetreating&&inRange(e,t,w)&&(!inRange(e,best,w)||closer)))best=t;
       }
       target=best;
     }
@@ -168,7 +174,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
       }
       return false;
     }
-    if(manual&&target)e.attackLastSeen={x:target.x,y:target.y};
+    if(manual&&target)o.lastSeen=e.attackLastSeen={x:target.x,y:target.y};
     e.combatTarget=target;if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
     if(target&&idleAuto&&!e.combatAnchor)e.combatAnchor={x:e.x,y:e.y};
     if(!target){

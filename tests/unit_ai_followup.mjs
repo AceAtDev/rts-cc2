@@ -85,7 +85,7 @@ check('Manual target remains authoritative even when another unit attacks',()=>{
 });
 check('Manual target lost to fog uses its last visible point rather than a hidden position',()=>{
   const a=unit(1,500),b=unit(2,720,1),h=make([a,b]);a.order={kind:'attack',target:b};h.step(a);
-  b.hidden=true;b.x=1100;h.step(a);assert.deepEqual(a.order,{kind:'attackMove',x:720,y:500});
+  b.hidden=true;b.x=1100;h.step(a);assert.deepEqual(a.order,{kind:'attackMove',x:720,y:500,lastSeen:{x:720,y:500}});
   assert.equal(h.moves.length,1);
 });
 check('Cancel clears response target while preserving cooldown and shot telemetry',()=>{
