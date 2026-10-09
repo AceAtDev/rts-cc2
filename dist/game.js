@@ -97,7 +97,8 @@ function action(id,append=keys.has('Shift')){if(!running)return false;const a=A[
  if(id==='unload'){for(const w of e.loaded||[]){w.loadedIn=null;w.x=e.x+e.r+24;w.y=e.y+Math.random()*35;w.px=w.x;w.py=w.y}e.loaded=[]}
  tone();updateHUD();return true;
 }
-function endRepair(e,o){if(o.resume){const queue=e.orders;issue(e,{...o.resume});e.orders=queue}else complete(e)}
+function interruptOrder(e,order){const queue=e.orders;e.orders=[];issue(e,order);e.orders=queue}
+function endRepair(e,o){if(o.resume)interruptOrder(e,{...o.resume});else complete(e)}
 function cargoOrder(u,target=null){const current=u.order?.kind==='return'?u.order.resume:u.order;return{kind:'return',target,resume:['mine','gas'].includes(current?.kind)?{...current,phase:'out'}:null}}
 function command(x,y,attackMove=false,append=false,forced=null,picked=null){if(!running)return false;x=clamp(x,8,WORLD.w-8);y=clamp(y,8,WORLD.h-8);const p={x,y},kind=forced||(attackMove?'attack':mode),e=active();
  if(['scan','mule','supplyDrop'].includes(kind)){const a=A[kind];if(e?.energy<a.energy)return false;const target=nearest(p,own().filter(t=>distance(t,p)<t.r+15));if(kind==='scan'){e.energy-=50;alerts.unshift({text:'Scanner Sweep',time,x,y,scanUntil:time+12});updateFog()}else if(kind==='supplyDrop'&&target?.type==='relay'&&!target.extraSupply){target.extraSupply=true;target.cap+=8;e.energy-=50}else if(kind==='mule'){notify('MULE harvesting is not implemented in this study.');return false}mode=null;return true}
@@ -109,11 +110,8 @@ function command(x,y,attackMove=false,append=false,forced=null,picked=null){if(!
  const movers=orders.filter(v=>['move','attackMove'].includes(v.o.kind));
  const batch=++commandSerial;for(const m of movers)m.o.batch=batch;
  reserveDestinations(movers,{x,y},reachable);
- const radiusGroups=new Map();for(const m of movers){const radius=terrainRadius(m.u);if(!radiusGroups.has(radius))radiusGroups.set(radius,[]);radiusGroups.get(radius).push(m);}
- for(const members of radiusGroups.values()){
-  const lead=members.filter(m=>!clear(m.u,{x,y},terrainRadius(m.u))).sort((a,b)=>distance(a.u,p)-distance(b.u,p))[0];
-  if(lead){const corridor=path(lead.u,{x,y});for(const m of members){m.o.corridor=corridor;m.o.corridorVersion=navVersion;}}
- }
+ // Routing is serviced by the bounded shared-goal planner on the next tick;
+ // accepting input must not perform a complete A* search synchronously.
  for(const {u,o} of orders){if(u.transform||u.sieged&&!['attack'].includes(o.kind))continue;issue(u,o,append)}markers.push({x,y,life:1,attack:kind==='attack'||!!enemy});if(!append)mode=null;tone();updateHUD();return !!orders.length;
 }
 const workers=createWorkers({entities:()=>entities,minerals:()=>minerals,move,complete,issue,pay,invalidateNav});
@@ -129,7 +127,7 @@ function update(dt){time+=dt;updateFog();motion.begin();combat.begin(dt);for(con
   if(e.type==='worker'&&o?.kind==='build'){const b=o.target;if(b.ready){complete(e);continue}if(b.builder&&b.builder!==e&&b.builder.hp>0&&b.builder.order?.kind==='build'&&b.builder.order.target===b){complete(e);continue}b.builder=e;if(move(e,b,dt,b.r+e.r+.2)){if(b.planned){b.planned=false;invalidateNav();}b.progress=Math.min(1,b.progress+dt/b.build);b.hp=Math.min(b.maxhp,b.hp+b.maxhp*.9*dt/b.build);if(b.progress>=1){b.ready=true;b.hp=b.maxhp;complete(e);if(b.type==='refinery'&&!e.order)issue(e,{kind:'gas',target:b,phase:'out'});invalidateNav();if(!e.team)notify(b.name+' complete',b)}}continue}
   if(e.type==='worker'&&o?.kind==='repair'){const b=o.target;if(b.hp>=b.maxhp){endRepair(e,o);continue}if(move(e,b,dt,b.r+e.r+4)){const hp=b.maxhp/(b.repairTime||TYPES[b.type].build||30)*dt;const m=b.cost*.25*hp/b.maxhp,g=(b.gas||0)*.25*hp/b.maxhp;if(afford(e.team,m,g)){pay(e.team,m,g);b.hp=Math.min(b.maxhp,b.hp+hp)}}continue}
   if(e.response==='Flee'&&!o&&!e.hold&&e.lastAttacker?.hp>0&&e.lastDamageAt>(e.lastFleeAt??-Infinity)){const a=e.lastAttacker,d=Math.max(.01,distance(e,a));e.lastFleeAt=e.lastDamageAt;issue(e,{kind:'flee',x:e.x+(e.x-a.x)/d*5*GRID,y:e.y+(e.y-a.y)/d*5*GRID,until:time+5/FASTER});continue}
-  if(e.repairAuto&&(!o||o.kind==='patrol')&&e.type==='worker'){const b=nearest(e,own(e.team).filter(b=>b!==e&&!b.insideRefinery&&(b.building||b.mechanical)&&b.hp<b.maxhp&&b.ready&&distance(e,b)<7*GRID));if(b){const queue=e.orders;issue(e,{kind:'repair',target:b,resume:o?{...o}:null});e.orders=queue;continue}}
+  if(e.repairAuto&&(!o||o.kind==='patrol')&&e.type==='worker'){const b=nearest(e,own(e.team).filter(b=>b!==e&&!b.insideRefinery&&(b.building||b.mechanical)&&b.hp<b.maxhp&&b.ready&&distance(e,b)<7*GRID));if(b){interruptOrder(e,{kind:'repair',target:b,resume:o?{...o}:null});continue}}
   if(o?.kind==='land'){if(move(e,o,dt,3)){const p={x:o.x,y:o.y};if(openPoint(p,e.r,e)&&!entities.some(u=>!u.building&&!u.loadedIn&&distance(u,p)<u.r+e.r)){e.flying=false;e.speed=0;stop(e);e.addon=entities.find(a=>['techlab','reactor'].includes(a.type)&&!a.parent&&a.team===e.team&&Math.abs(a.x-addonPosition(e).x)<1&&Math.abs(a.y-addonPosition(e).y)<1);if(e.addon)e.addon.parent=e;invalidateNav()}}continue}
   if(combat.engage(e,dt))continue;
   if(o?.kind==='flee'){if(time>=o.until||move(e,reachable(o,terrainRadius(e)),dt,3))complete(e)}else if(o?.kind==='move'||o?.kind==='attackMove'){if(move(e,o,dt,3))complete(e)}else if(o?.kind==='follow'){move(e,o.target,dt,e.r+o.target.r+18)}else if(o?.kind==='patrol'){const end=o.out?o:o.origin;if(move(e,end,dt,5)){o.out=!o.out;e.nav=null}}else{e.vx=e.vy=0}

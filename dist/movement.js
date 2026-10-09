@@ -1,6 +1,6 @@
 import {ignoreWorkerCollision} from './workers.js';
 import {contactPoint} from './geometry.js';
-import {turnTowards} from './unit-profiles.js';
+import {turnTowards,terrainRadius} from './unit-profiles.js';
 
 // Custom local crowd solver, not Blizzard's navigation implementation.
 export function createMovement({entities,world,clear,openPoint,path,navVersion}) {
@@ -9,7 +9,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
   const dist=(a,b)=>length(a.x-b.x,a.y-b.y);
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function begin() {
-    requests=0;cells=new Map();
+    requests=0;cells=new Map();path.begin?.();
     for(const e of entities()) if(!e.building&&!e.loadedIn&&!e.insideRefinery&&e.hp>0&&!e.flying) {
       const key=Math.floor(e.x/56)+','+Math.floor(e.y/56);
       if(!cells.has(key))cells.set(key,[]);cells.get(key).push(e);
@@ -22,6 +22,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
   }
   function move(e,point,dt,stopAt=3) {
     if(e.sieged||e.transform||e.loadedIn)return false;
+    const radius=terrainRadius(e);
     // The destination is shared during travel; individual footprint reservations
     // are used only on approach. Mixed-speed units retain their own speed.
     const reservation=e.order?.arrival;
@@ -30,12 +31,12 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       const target=p,padding=Math.max(e.r+.1,stopAt-p.r),version=navVersion();
       if(e.interaction?.target!==target||e.interaction.version!==version||e.interaction.padding!==padding||e.interaction.x!==target.x||e.interaction.y!==target.y){
         let goal=contactPoint(e,target,padding);
-        if(!openPoint(goal,e.r)){
+        if(!openPoint(goal,radius)){
           let best=null,cost=Infinity;
           for(let i=0;i<32;i++){
             const a=i*Math.PI/16,probe={x:target.x+Math.cos(a)*(target.r+padding+60),y:target.y+Math.sin(a)*(target.r+padding+60)},q=contactPoint(probe,target,padding);
-            if(!openPoint(q,e.r))continue;
-            const score=dist(e,q)+(clear(e,q,e.r)?0:target.r);
+            if(!openPoint(q,radius))continue;
+            const score=dist(e,q)+(clear(e,q,radius)?0:target.r);
             if(score<cost){cost=score;best=q;}
           }
           if(best)goal=best;
@@ -49,35 +50,40 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     let goal=p;
     if(stopAt>5){const k=(d-stopAt)/d;goal={x:e.x+(p.x-e.x)*k,y:e.y+(p.y-e.y)*k};}
     let dest=goal;
-    if(!e.flying&&!clear(e,goal,e.r)) {
+    if(!e.flying&&!clear(e,goal,radius)) {
       const key=Math.round(goal.x/14)+','+Math.round(goal.y/14)+','+navVersion();
       if(!e.nav||e.navKey!==key) {
         let shared=null;
         const corridor=e.order?.corridor;
         if(corridor?.length&&e.order.corridorVersion===navVersion()) {
-          const entry=corridor.findIndex(p=>clear(e,p,e.r));
-          if(entry>=0){shared=corridor.slice(entry).map(p=>({...p}));const before=shared[shared.length-2]||e;if(clear(before,goal,e.r))shared[shared.length-1]={...goal};else shared=null;}
+          const entry=corridor.findIndex(p=>clear(e,p,radius));
+          if(entry>=0){shared=corridor.slice(entry).map(p=>({...p}));const before=shared[shared.length-2]||e;if(clear(before,goal,radius))shared[shared.length-1]={...goal};else shared=null;}
         }
         if(shared){e.nav=shared;e.navKey=key;}
-        else if(requests<4){
-          requests++;e.nav=path(e,goal);e.navKey=key;
+        else if(path.request||requests<4){
+          requests++;const route=path.request?path.request(e,goal):path(e,goal);
+          if(route===null){e.vx=e.vy=0;return false;}
+          e.nav=route;e.navKey=key;
           // An open contact point can lie in a sealed pocket between fields.
           // Select a reachable face instead of retrying that pocket forever.
           if(!e.nav.length&&e.interaction?.target===point){
             const target=point,candidates=[];
             for(let i=0;i<32;i++){
               const angle=i*Math.PI/16,probe={x:target.x+Math.cos(angle)*(target.r+e.interaction.padding+60),y:target.y+Math.sin(angle)*(target.r+e.interaction.padding+60)},q=contactPoint(probe,target,e.interaction.padding);
-              if(openPoint(q,e.r))candidates.push(q);
+              if(openPoint(q,radius))candidates.push(q);
             }
             candidates.sort((a,b)=>dist(e,a)-dist(e,b));
-            for(const q of candidates){const route=path(e,q);if(route.length){e.interaction.goal=q;e.nav=route;e.navKey=null;return false;}}
+            // Try one alternate face per service attempt. Searching all 32
+            // candidates synchronously bypassed the movement planning budget.
+            const q=candidates[(e.interaction.faceTry||0)%candidates.length];
+            if(q){e.interaction.faceTry=(e.interaction.faceTry||0)+1;e.interaction.goal=q;e.nav=null;e.navKey=null;return false;}
           }
         }
         else {e.vx=e.vy=0;return false;}
       }
       if(!e.nav?.length){e.vx=e.vy=0;return false;}
       while(e.nav.length>1&&dist(e,e.nav[0])<8)e.nav.shift();
-      for(let i=e.nav.length-1;i>0;i--)if(clear(e,e.nav[i],e.r)){e.nav.splice(0,i);break;}
+      for(let i=e.nav.length-1;i>0;i--)if(clear(e,e.nav[i],radius)){e.nav.splice(0,i);break;}
       dest=e.nav[0];
     }
     let dx=dest.x-e.x,dy=dest.y-e.y,len=length(dx,dy);
@@ -93,11 +99,11 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       const settled=b.arrived&&b.arrivalBatch&&b.arrivalBatch===e.arrivalBatch&&!b.order;
       const anchored=b.hold||b.sieged||b.team!==e.team,pursuit=b===e.combatTarget;
       const bv=length(b.vx||0,b.vy||0),sameDirection=bv>3&&((b.vx*ux+b.vy*uy)/bv)>.75;
-      if(!anchored&&!b.order&&!b.combatTarget&&forward>0&&forward<gap+speed*.4&&Math.abs(cross)<gap+2) {
+      if(!anchored&&!b.order&&!b.combatTarget&&forward>0&&forward<gap+Math.min(3,speed*dt*2)&&dd<gap+2&&Math.abs(cross)<gap) {
         const side=Math.abs(cross)>1?(cross>=0?-1:1):(b.id%2?1:-1);
         const yieldStep=speed*(settled?.15:.8)*dt;
         const yieldPoint={x:b.x-uy*side*yieldStep,y:b.y+ux*side*yieldStep};
-        if(openPoint(yieldPoint,b.r)){b.x=yieldPoint.x;b.y=yieldPoint.y;}
+        if(openPoint(yieldPoint,terrainRadius(b))){b.x=yieldPoint.x;b.y=yieldPoint.y;}
       }
       // Anticipate crossing traffic and anchored units. Ordinary idle allies
       // can yield through the contact solver, so they do not become walls.
@@ -122,10 +128,10 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     const change=length(vx-e.vx,vy-e.vy),blend=reversing?1:Math.min(1,accel*dt/(change||1));
     e.vx+=(vx-e.vx)*blend;e.vy+=(vy-e.vy)*blend;
     let next={x:clamp(e.x+e.vx*dt,e.r,world.w-e.r),y:clamp(e.y+e.vy*dt,e.r,world.h-e.r)};
-    if(!e.flying&&!clear(e,next,e.r)) {
+    if(!e.flying&&!clear(e,next,radius)) {
       const sx={x:next.x,y:e.y},sy={x:e.x,y:next.y};
-      if(clear(e,sx,e.r)){next=sx;e.vy=0;}
-      else if(clear(e,sy,e.r)){next=sy;e.vx=0;}
+      if(clear(e,sx,radius)){next=sx;e.vy=0;}
+      else if(clear(e,sy,radius)){next=sy;e.vx=0;}
       else {next={x:e.x,y:e.y};e.vx=e.vy=0;e.nav=null;}
     }
     const advanced=dist(e,next);
@@ -142,14 +148,15 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       if(d>=gap)continue;
       if(d<.001){dx=a.id%2?.01:-.01;dy=.007;d=length(dx,dy);}
       const sameBatch=a.arrivalBatch&&a.arrivalBatch===b.arrivalBatch;
-      const anchorA=a.hold||a.sieged||a.transform,anchorB=b.hold||b.sieged||b.transform;
-      if(anchorA&&anchorB)continue;
       const movingA=length(a.vx,a.vy)>3,movingB=length(b.vx,b.vy)>3;
+      const enemy=a.team!==b.team;
+      const anchorA=a.hold||a.sieged||a.transform||(enemy&&!movingA&&movingB),anchorB=b.hold||b.sieged||b.transform||(enemy&&!movingB&&movingA);
+      if(anchorA&&anchorB)continue;
       const wa=anchorA?0:anchorB?1:!movingA&&movingB?(sameBatch?.6:.85):!movingB&&movingA?(sameBatch?.4:.15):.5;
       const overlap=(gap-d)*.95;
       for(const [e,f,sign] of [[a,wa,1],[b,1-wa,-1]]) {
         const p={x:clamp(e.x+dx/d*overlap*f*sign,e.r,world.w-e.r),y:clamp(e.y+dy/d*overlap*f*sign,e.r,world.h-e.r)};
-        if(openPoint(p,e.r)){e.x=p.x;e.y=p.y;}
+        if(openPoint(p,terrainRadius(e))){e.x=p.x;e.y=p.y;}
       }
     }
   }
@@ -171,6 +178,6 @@ export function reserveDestinations(movers,point,reachable) {
   for(const m of [...movers].sort((a,b)=>Math.hypot(a.u.x-point.x,a.u.y-point.y)-Math.hypot(b.u.x-point.x,b.u.y-point.y))) {
     let best=0;
     for(let i=1;i<slots.length;i++)if(Math.hypot(m.u.x-slots[i].x,m.u.y-slots[i].y)<Math.hypot(m.u.x-slots[best].x,m.u.y-slots[best].y))best=i;
-    m.o.arrival=reachable(slots.splice(best,1)[0],m.u.r);m.o.arrivalRadius=radius;
+    m.o.arrival=reachable(slots.splice(best,1)[0],terrainRadius(m.u));m.o.arrivalRadius=radius;
   }
 }
