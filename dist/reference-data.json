@@ -77,6 +77,55 @@
         "Unit speed, radius, armor, attributes",
         "Weapon period, damage and bonuses"
       ]
+    },
+    {
+      "title": "Blizzard mapmaking art and performance",
+      "url": "https://news.blizzard.com/en-gb/article/20097658/mapmaking-best-practices-in-art-and-performance",
+      "covers": [
+        "Unit readability",
+        "Terrain palette",
+        "Rendering cost"
+      ]
+    },
+    {
+      "title": "Blizzard SC2 rendering presentation",
+      "url": "https://www.realtimerendering.com/advances/s2008/SIGGRAPH2008%20-%20StarCraftII.pdf",
+      "covers": [
+        "Normal maps",
+        "Specular response",
+        "Ambient occlusion"
+      ]
+    },
+    {
+      "title": "Extracted Core camera catalog",
+      "url": "https://raw.githubusercontent.com/Talv/sc2-data/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/CameraData.xml",
+      "covers": [
+        "Perspective field of view and pitch",
+        "Five native zoom stops as future comparison"
+      ]
+    },
+    {
+      "title": "Blizzard patch 5.0.13",
+      "url": "https://news.blizzard.com/en-gb/article/24078322/starcraft-ii-5-0-13-patch-notes",
+      "covers": [
+        "Separate worker terrain radius .3125"
+      ]
+    },
+    {
+      "title": "Blizzard patch 5.0.14",
+      "url": "https://news.blizzard.com/en-us/article/24162754/starcraft-ii-5-0-14-patch-notes",
+      "covers": [
+        "Workers waiting for unfinished gas",
+        "Construction-mover fidelity gap"
+      ]
+    },
+    {
+      "title": "DeepMind SC2 environment design",
+      "url": "https://github.com/google-deepmind/pysc2/blob/master/docs/environment.md",
+      "covers": [
+        "Discrete simulation and interpolated rendering",
+        "Target priority hierarchy"
+      ]
     }
   ],
   "screenshots": [
@@ -115,6 +164,14 @@
         "Green placement hologram",
         "Ground placement footprint"
       ]
+    },
+    {
+      "url": "https://us.media.blizzard.com/sc2/media/screenshots/guide/terran/terran-liftoff02.jpg",
+      "studied": [
+        "Stepped Terran console",
+        "Raised side panels",
+        "Square command cells"
+      ]
     }
   ],
   "assetSources": [
@@ -132,6 +189,12 @@
       "files": "vendor/three.module.js",
       "url": "https://github.com/mrdoob/three.js/tree/r169",
       "license": "MIT; vendor/THREE-LICENSE.txt"
+    },
+    {
+      "files": "assets/hud/oxanium.ttf",
+      "url": "https://github.com/sevmeyer/oxanium",
+      "license": "SIL Open Font License; assets/hud/OFL.txt",
+      "note": "Approximate console font, not the native SC2 font"
     }
   ],
   "implementedUnits": [
@@ -145,9 +208,10 @@
   "movementImplementation": {
     "simulationHz": 60,
     "rendering": "Interpolated 3D scene with independent turret facing",
-    "pathPlanning": "Half-unit cached A* using catalog building contours and actual unit radii, with shared group corridors and a deterministic fallback queue",
+    "pathPlanning": "Half-unit cached A* using building contours; command-level shared corridors and bounded incremental fallback searches with round-robin service",
     "localMovement": "Per-unit catalog profiles, compact destination reservations, predictive avoidance, sideways idle yielding, anchored Hold/Siege and collision settling",
-    "workers": "Harvest orders bypass ordinary mobile collision; exclusive resource ownership; catalog mineral/gas timings; reachable resource faces"
+    "workers": "Cargo smart-return and Shift queues, exclusive harvest ownership, unfinished gas waiting, single maintained builder, repair autocast suspends/resumes Patrol",
+    "workerTerrainRadius": ".3125 game units for static routing; separation/weapon radius remains .375"
   },
   "knownDifferences": [
     "Custom 3D models and terrain rather than the original game assets",
@@ -160,7 +224,11 @@
     "Weapon randomness, missile acceleration and exact effect conditions are omitted; shots quantize to 60 Hz",
     "Tank morph times use an older catalog snapshot; full current-patch validation is incomplete",
     "Concussive Shells, Reaper grenade and cliff jumping remain absent",
-    "Harvest splitting, automatic flee, peon construction movement, interaction-face search and complete collision flags require comparison with a running SC2 client"
+    "Harvest splitting, automatic flee, peon construction movement, interaction-face search and complete collision flags require comparison with a running SC2 client",
+    "Camera zoom still differs from catalog five distance/pitch stops; default distance is viewport-calibrated",
+    "Current-patch subgroup ordering is not fully verified; imported priorities use the pinned 2019 catalog",
+    "Native 22.4Hz Faster loops differ from the prototype 60Hz simulation; native traces and human-input captures remain absent",
+    "World models, materials, animations, frame art, wireframes, console font and most portraits remain approximations"
   ],
   "verification": {
     "browser": "Chromium with software WebGL",
@@ -171,17 +239,24 @@
     "placement": "18 catalog geometry/placement cases plus actual snapped ghost",
     "workerControls": "Every starting SCV makes trips, group split, exclusive resource harvesting, collision restoration, gas interruption, queued Hold and construction plans",
     "attackControls": "15 pursuit and attack regressions plus six actual mouse/keyboard command paths",
-    "latestChecks": "142 explicit checks across seven browser suites, plus snapped ghost assertion",
+    "latestChecks": "184 explicit browser checks across nine suites, plus snapped ghost and keyboard/mobile assertions; 10 isolated movement regressions",
     "latestStress": {
       "units": 120,
       "commands": 5,
       "steps": 600,
-      "isolatedMeanMs": 2.15,
-      "isolatedP95Ms": 4.3,
-      "isolatedMaxMs": 13.2,
+      "meanMs": 2.477,
+      "p95Ms": 4.5,
+      "worstMs": 67.2,
+      "commandMsRange": [
+        1.2,
+        6.2
+      ],
       "invalidPositions": 0,
-      "qualification": "Simulation CPU time with software WebGL, not rendered FPS or native-client equivalence. A contended run had a 158.6 ms outlier."
-    }
+      "context": "Sub-agent serial final stress with eager click-time A* removed; software WebGL; maximum exceeds one 60Hz frame, so smoothness is not established"
+    },
+    "gameplayFollowup": "31 regressions including actual Shift+C, cargo destinations, repair/patrol, one builder, gas waiting, supply, F1 and subgroup order",
+    "visualFollowup": "11 integrated checks including desktop/mobile console bounds, perspective camera, resource mesh reset, actual cargo model click and HUD-aware same-type selection",
+    "movementFollowup": "10 regressions for enemy anchoring, near-contact yielding, shared-goal start delay, cancellation, fairness, inner radius and enclosed contact cells"
   },
   "combatImplementation": {
     "targeting": "Persistent targets, explicit overrides, range-limited acquisition, Move suppression, both-team vision; defensive idle SCVs, automatic flee and explicit friendly targets",
@@ -192,5 +267,10 @@
     "footprints": "Separate placement square and catalog path contour; 2\u00d72 Depot/add-ons, 3\u00d73 production/refinery, 5\u00d75 Command Center",
     "preview": "Green/red hologram, individually validated cells and optional add-on pad",
     "resources": "Mineral 2\u00d71 footprints and catalog 8\u00d77 NearResources mask"
+  },
+  "visualImplementation": {
+    "camera": "Perspective, vertical FOV27.8 degrees, pitch56; viewport-calibrated distance and prototype zoom remain",
+    "scene": "Custom beveled Terran models, articulated SCVs, distinguishable cargo, procedural terrain normal map, contact shadows and material batching",
+    "console": "Stepped geometry, square command cells, original green SVG wireframes for three types; Oxanium font approximation"
   }
 }

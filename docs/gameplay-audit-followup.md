@@ -35,6 +35,7 @@ Snapshot: [Talv extracted catalog, commit 1921f856](https://github.com/Talv/sc2-
 | Factory | 22 | 60 |
 | Engineering Bay | 18 | 35 |
 | Tech Lab | 2 | 25 |
+| Reactor | 1 | 50 |
 | Refinery | 1 | 30 |
 
 RepairTime must be converted from Normal to Faster once. SCV repair filters require Mechanical+Visible and exclude Self, Enemy, Missile, UnderConstruction, Dead and Hidden. The auto-acquire range is seven game units, while the implementation uses 130 world units (4.64 game units). The Construction mover/PeonDisableCollision is part of native TerranBuild; a stationary worker permanently outside the building is an approximation. Live 5.0.14 changed the builder's random relocation interval to 4.64–6.07 real seconds, which our simulation does not model.

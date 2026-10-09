@@ -43,12 +43,13 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 ## Implementation
 
 - A 60 Hz simulation and interpolated Three.js rendering.
-- Radius-aware A* navigation, shared route corridors, cached walkability grids, and a deterministic fallback planning queue.
+- Radius-aware A* navigation, shared route corridors, cached walkability grids, and bounded incremental fallback searches.
 - Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
 - Persistent combat targets, cancelable attack windup, cooldown preservation, projectiles, Reaper bursts/regeneration, Hellion flame lines, and friendly siege splash.
-- Fixed 5 × 3 command-card positions based on researched SC2 references.
+- Stepped Terran console with square 5 × 3 command cells, original green selection wireframes, and a locally bundled console font.
+- Perspective camera with catalog field of view and pitch, beveled Terran silhouettes, visible cargo and contact shadows.
 - Grid-snapped building placement, per-cell validity and add-on pads, catalog path contours, lowered-Depot pathing, and separate placement occupancy.
-- Worker mineral walking, exclusive harvesting, smart local splitting, gas entrance/exit, queued construction plans and nearest-builder selection.
+- Worker mineral walking, exclusive harvesting, smart local splitting, gas entrance/exit and waiting, queued cargo return, one maintained construction worker, repair autocast during Patrol, and nearest-builder selection.
 - Resource gathering, construction, production queues, rally orders, add-ons, research, lift/land, and an opponent using its own economy.
 
 The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege Tank. Other reference buttons explain their unavailable state in their tooltips. Multiplayer, air combat, a full tech tree, other races, and campaigns remain outside the current implementation.
@@ -62,6 +63,8 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `dist/workers.js`: harvest ownership, timings, resource splitting, return trips and interruptions.
 - `dist/combat.js`: acquisition, weapon phases, projectiles, damage, and regeneration.
 - `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
+- `docs/gameplay-audit-followup.md`, `docs/visual-design-followup.md`: reproduced failures and reference-driven changes.
+- `docs/native-control-comparison.md`, `tests/native_compare/`: native capture/comparison procedure; no native traces have been collected here.
 - `dist/renderer.js`: 3D scene, models, interpolation, and battlefield overlays.
 - `dist/native-data.js`: Terran unit definitions and Standard command cards.
 - `dist/reference-data.json`: research sources, screenshot references, asset provenance, and known differences.
@@ -79,6 +82,13 @@ python3 -m playwright install chromium
 python3 tests/browser_controls.py
 python3 tests/browser_input.py
 python3 tests/unit_micro.py
+python3 tests/worker_controls.py
+python3 tests/building_grid.py
+python3 tests/attack_controls.py
+python3 tests/command_clicks.py
+python3 tests/gameplay_followup.py
+python3 tests/visual_followup.py
+node tests/movement_followup.mjs
 python3 tests/movement_stress.py
 ```
 
@@ -86,6 +96,6 @@ The scripts use a system Chromium executable when available, otherwise Playwrigh
 
 ## Third-party material
 
-StarCraft II button and resource artwork belongs to Blizzard Entertainment. Its source references and preserved notices are in `dist/reference-data.json` and `dist/assets/icons/`. Three.js is bundled with its MIT license in `dist/vendor/THREE-LICENSE.txt`. Those notices apply to their respective third-party materials.
+StarCraft II button and resource artwork belongs to Blizzard Entertainment. Its source references and preserved notices are in `dist/reference-data.json` and `dist/assets/icons/`. Three.js is bundled with its MIT license in `dist/vendor/THREE-LICENSE.txt`. Those notices apply to their respective third-party materials. Oxanium is bundled with its OFL license in `dist/assets/hud/OFL.txt`.
 
 The worker/placement follow-up adds `tests/building_grid.py`, `tests/worker_controls.py`, `tests/attack_controls.py`, and `tests/command_clicks.py`. These cover footprint grids, resource interruptions, mining traffic, construction plans, melee pursuit, shot range slop, and actual command targeting. Passing them does not establish exact SC2 control fidelity; native-client comparison remains required.
