@@ -53,6 +53,30 @@
     {
       "title": "Game-extracted older hotkey data",
       "url": "https://github.com/BeedeBdoo/Sc2HotkeyData/tree/master/data"
+    },
+    {
+      "title": "James Anhalt: SC2 navigation, GDC 2011",
+      "url": "https://www.gdcvault.com/play/1014514/AI-Navigation-It-s-Not",
+      "covers": [
+        "Planning, steering, collision architecture; presentation frames inspected"
+      ]
+    },
+    {
+      "title": "Extracted SC2 catalog build 74071 (2019 snapshot)",
+      "url": "https://github.com/Talv/sc2-data/tree/1921f856b0443d4cbd366c472cd7984fa6a224d1",
+      "covers": [
+        "Movement profiles",
+        "Damage point and backswing",
+        "Effects, missile mover, regeneration, morph sections"
+      ]
+    },
+    {
+      "title": "Extracted multiplayer unit data (2025 snapshot)",
+      "url": "https://github.com/BurnySc2/sc2-techtree/blob/edcefaff7073732dbd7de63906f9224128148592/data/data.json",
+      "covers": [
+        "Unit speed, radius, armor, attributes",
+        "Weapon period, damage and bonuses"
+      ]
     }
   ],
   "screenshots": [
@@ -113,9 +137,9 @@
   ],
   "movementImplementation": {
     "simulationHz": 60,
-    "rendering": "Interpolated 3D scene",
-    "pathPlanning": "Radius-aware A* with cached walkability grids, route caching, line-of-sight smoothing, and a 2.5 ms per-step planning budget",
-    "localMovement": "Spatial hashing, predictive sidesteps, velocity acceleration, stable formation assignment, crowd-aware arrivals, anchored Hold/Siege, three collision settling passes"
+    "rendering": "Interpolated 3D scene with independent turret facing",
+    "pathPlanning": "Radius-aware cached A*, shared group corridors, deterministic four-request fallback queue",
+    "localMovement": "Per-unit catalog profiles, compact destination reservations, predictive avoidance, sideways idle yielding, anchored Hold/Siege and collision settling"
   },
   "knownDifferences": [
     "Custom 3D models and terrain rather than the original game assets",
@@ -123,12 +147,21 @@
     "Terran subset only; unsupported reference buttons are dimmed and explain their status",
     "No multiplayer, air combat, ramps, full tech tree, campaigns, or other races",
     "Factory Tank position follows the current editor data; older extracted data uses a different position",
-    "Unit statistics and durations are modeled but not a complete patch-data import"
+    "Movement and weapon numbers imported for the six implemented units; other stats and all current-patch values are not fully audited",
+    "Navigation, arrival reservations, steering, turn integration, targeting priorities, pursuit and attack arcs remain custom policies; not verified identical to SC2",
+    "Weapon randomness, missile acceleration and exact effect conditions are omitted; shots quantize to 60 Hz",
+    "Tank morph times use an older catalog snapshot; full current-patch validation is incomplete",
+    "Concussive Shells, Reaper grenade and cliff jumping remain absent"
   ],
   "verification": {
     "browser": "Chromium with software WebGL",
     "controls": "Selection modifiers, Standard hotkeys, control-group stealing, subgroups, order queues, minimap commands, camera locations, idle workers",
     "movement": "24 units route around rock and settle; held units remain anchored; rapid reversal responds; 120-unit repeated-command stress exercise",
-    "gameplay": "Gathering, construction queue back to mining, producer rally, Tech Lab requirement, Stim research gate, siege mode, resource-limited AI opening"
+    "gameplay": "Gathering, construction queue back to mining, producer rally, Tech Lab requirement, Stim research gate, siege mode, resource-limited AI opening",
+    "unitMechanics": "41 browser behavior regressions including canceled shots, cooldowns, target persistence, projectile flight, per-hit armor, flame geometry, friendly splash and regeneration"
+  },
+  "combatImplementation": {
+    "targeting": "Persistent targets, explicit overrides, range-limited acquisition, Move suppression, both-team vision",
+    "weapons": "Cancelable windup/recovery, preserved cooldowns, per-hit armor, attribute bonuses, missile travel, flame line, friendly siege splash, minimum range, Reaper burst and regen"
   }
 }

@@ -1,6 +1,6 @@
 # SC2 Control Lab
 
-A browser RTS prototype studying StarCraft II's English Standard Terran controls. It has a 3D battlefield, a playable Terran skirmish, and a unit control lab with 32 Marines and 4 Siege Tanks.
+A browser RTS prototype studying StarCraft II's English Standard Terran controls. It has a 3D battlefield, a playable Terran skirmish, and six selectable unit-control drills.
 
 The world models and movement solver are custom. This is an independent fan prototype; full StarCraft II fidelity remains unfinished.
 
@@ -14,7 +14,7 @@ cd rts-cc2
 python3 -m http.server 8000 --bind 127.0.0.1 --directory dist
 ```
 
-Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **Start skirmish** for an opening with 12 SCVs and 50 minerals, or **Unit control lab** to try army movement immediately. Press **F12** for the full control reference.
+Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **Start skirmish** for an opening with 12 SCVs and 50 minerals, or **Unit control lab** to try army movement immediately. Choose a drill for army routing, Marine micro, Hellion lines, siege positioning, Reaper skirmishing, or Marauder projectiles. Press **F12** for the full control reference.
 
 ## Controls
 
@@ -43,8 +43,9 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 ## Implementation
 
 - A 60 Hz simulation and interpolated Three.js rendering.
-- Radius-aware A* navigation, cached walkability grids, and a short planning budget per step.
-- Nearby-unit avoidance, collision settling, formation assignment, crowd-aware arrivals, and anchored Hold/Siege units.
+- Radius-aware A* navigation, shared route corridors, cached walkability grids, and a deterministic fallback planning queue.
+- Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
+- Persistent combat targets, cancelable attack windup, cooldown preservation, projectiles, Reaper bursts/regeneration, Hellion flame lines, and friendly siege splash.
 - Fixed 5 × 3 command-card positions based on researched SC2 references.
 - Resource gathering, construction, production queues, rally orders, add-ons, research, lift/land, and an opponent using its own economy.
 
@@ -53,6 +54,10 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 ## Source map
 
 - `dist/game.js`: simulation, orders, selection, controls, economy, and HUD updates.
+- `dist/unit-profiles.js`: extracted movement and weapon numbers with Faster-speed conversion.
+- `dist/movement.js`: route following, crowd steering, destination reservations, and collisions.
+- `dist/combat.js`: acquisition, weapon phases, projectiles, damage, and regeneration.
+- `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
 - `dist/renderer.js`: 3D scene, models, interpolation, and battlefield overlays.
 - `dist/native-data.js`: Terran unit definitions and Standard command cards.
 - `dist/reference-data.json`: research sources, screenshot references, asset provenance, and known differences.
@@ -69,6 +74,7 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m playwright install chromium
 python3 tests/browser_controls.py
 python3 tests/browser_input.py
+python3 tests/unit_micro.py
 python3 tests/movement_stress.py
 ```
 
