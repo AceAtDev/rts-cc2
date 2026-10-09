@@ -1,0 +1,27 @@
+# Building actor animation fidelity
+
+The replacement renderer now keeps the building root at ground elevation and unit scale. Its fixed footprint and selection ring do not move when constructing, retracting a Supply Depot, or lifting a production building. Visible geometry has separate construction layers, an external frame and welding carriage, a retracting Depot body, a flying building body with compact amber exhaust, an Engineering Bay fan, active production lighting, extraction pumps, and damage effects.
+
+## Evidence and implementation
+
+- [Blizzard Terran lift-off guide](https://news.blizzard.com/en-us/article/5740266/game-guide-terran-lift-off) identifies the flight-capable structures, slow airborne movement, unobstructed landing requirements, and add-ons left behind. Its [official Barracks/Factory exchange screenshot](https://us.media.blizzard.com/sc2/media/screenshots/guide/terran/terran-liftoff06.jpg) was inspected for the elevated building silhouette and compact amber thruster exhaust. Hovering body elevation is steady; only the exhaust changes subtly.
+- [Blizzard ramp-defense guide](https://news.blizzard.com/en-us/article/5740267/game-guide-terran-ramp-defense) distinguishes lowering Depots as doors from lifting production buildings. The foundation remains at ground level while the upper Depot structure retracts.
+- [Liberty ability catalog, pinned build 74071 snapshot](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/liberty.sc2mod/base.sc2data/GameData/AbilData.xml): `TerranBuildingLiftOff` Actor duration is 1.5 Normal seconds. `TerranBuildingLand` Actor delay is .5 and Actor duration 1.5. `SupplyDepotLower` and `SupplyDepotRaise` Actor duration is 1.3. The module divides these by Faster speed 1.4. These are actor timings, distinct from native Mover, Stats and ability-section timings.
+- [Liberty actor catalog](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/liberty.sc2mod/base.sc2data/GameData/ActorData.xml): `TerranBuilding` creates a separate `TerranBuildingBuild` actor on construction start. The construction actor creates `TerranConstructionAttached`; `SupplyDepot` plays Burrow/Unburrow groups; `TerranBuildingFlyer` switches Fly start/end groups. `QueueAnim` distinguishes active work start/loop/end from idle. `ExtractAnim` plays a Work animation on a gas extraction event with duration 1.981 Normal seconds. Replacement extraction pumps only move during an occupied extraction cycle; unstarted supply-blocked queues do not activate production lighting.
+- [Liberty validator catalog](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/liberty.sc2mod/base.sc2data/GameData/ValidatorData.xml): `BurnDownLightSmoke` uses life below `.666` and at least `.5`; HeavySmoke uses below `.5` and at least `.333`; Fire uses below `.333`. Completed, alive buildings only. These exact decimal boundaries are used, with the `TerranFlames` StateThinkInterval `.5` Normal seconds from the actor catalog. Under-construction low HP does not cause burning effects.
+
+## Integration contract
+
+`attachBuildingAnimation(view, group, entity)` runs after model geometry is authored, before final root batching and before selection/shadow creation. It batches each static construction layer internally. `group.userData.animationParts` must be included in the root `mergeStatic` exclusion set. Do not merge the entire building body afterward: that would remove the construction and mechanical hierarchy.
+
+`updateBuildingAnimation(group, entity, {dt, time, alpha, x, y})` returns `{lift, height, shadowOpacity, flying}`. `height` already includes lift and Depot retraction. The root stays at `(x, 0, y)` with scale 1. The ground contact shadow decreases with altitude. A constant simulation `time` freezes the pose; reversing a Depot transition starts at the currently displayed pose. Missing `ready` denotes a placement preview: show a complete body and hide construction, exhaust, production and damage effects.
+
+## Limits still requiring native comparison
+
+Actual Blizzard M3 animation tracks, skeletal meshes, texture atlases and particle attachment points are not imported. Construction layer cutoffs, geometry, easing curves, flight altitude, Depot displacement, pump displacement, fan/radar speeds, exhaust flicker and smoke/fire shapes are replacement choices. The module does not claim those choices are native-equivalent.
+
+Gameplay still flips `flying` and `lowered` immediately. Native abilities have separate Actor, Mover, Collide, Stats and ability timings; visual actor duration alone does not establish those gameplay transitions. Orbital/Planetary upgrades still rebuild their final model on completion rather than reproducing native animated Morph groups and cancellation. Native production Work start/end tracks and exact gas extraction event timestamps remain unavailable; current Work lighting and pump motion are approximations.
+
+## Validation
+
+`node tests/building_animation_fidelity.mjs` checks construction footprint stability, halted welding, placement previews, catalog-length Depot and flight transitions, reversal continuity, steady airborne elevation, 30/120 Hz pose agreement, paused actors, supply-blocked production, dynamic parts surviving mesh batching, native damage thresholds and state-monitor cadence. These tests establish replacement actor behavior and regressions; they do not establish native animation equivalence.
