@@ -41,9 +41,15 @@ Movement uses unit profiles, immediate infantry reversals, local avoidance, side
 
 ## Remaining fidelity work
 
-- Replace the grid planner and circular static obstacles with a terrain navigation mesh and actual building footprints, including ramps, cliffs, disconnected regions, and Reaper jumps.
+- Replace the grid planner with a terrain navigation mesh, including ramps, cliffs, disconnected regions, and Reaper jumps. Building path contours and separate placement squares now use the extracted catalog.
 - Compare crowd motion, arrival packing, lateral acceleration, turns, attack acquisition priorities, pursuit distance, range slop, and attack arcs against SC2 recordings. Those policies are custom approximations, not catalog-derived algorithms.
 - Validate morph timing against the current client. Deployment currently uses section durations from the 2019 catalog, without its random delay.
 - Import missile acceleration, weapon delay randomness, exact effect targeting and splash rules, animation events, and fractional tick semantics. This engine quantizes damage points to a 60 Hz tick and approximates missile flight at maximum speed.
 - Add Concussive Shells research, Reaper grenade/jumps, the remaining units, races, abilities, upgrades, and a full opponent AI. Current enemy macro is a limited scripted opening; unit combat shares the same order executor as the player.
 - Replace custom world models, terrain, console chrome, and sounds with faithful authorized assets. The original game is far more visually detailed.
+
+## Building-placement follow-up
+
+The Liberty Footprint catalog supplies the chamfered 2×2, 3×3 and 5×5 path contours. Selection radius, blocked path contour, and placement square are separate fields. Placement uses one-unit cells (28 world units), even-size centers on integer coordinates, and odd-size centers on half coordinates. Barracks/Factory add-on pads are two cells square at an offset of 2.5 units horizontally and .5 vertically. A lowered Depot remains occupied for placement while opening its ground path. Refineries use the rounded geyser-built contour. The Command Center mineral exclusion mask currently uses a conservative rectangular approximation of the catalog NearResources mask; its rounded halo corners remain a fidelity gap.
+
+`tests/building_grid.py` verifies 17 placement and pathing cases plus the actual rendered grid-snapped ghost. The navigation grid is now half a game unit with actual unit radii, preventing radius rounding from closing a one-cell Marine gap. This remains a grid planner rather than SC2's navigation mesh.

@@ -1,3 +1,4 @@
+import {contactPoint} from './geometry.js';
 import {turnTowards} from './unit-profiles.js';
 
 // Custom local crowd solver, not Blizzard's navigation implementation.
@@ -24,6 +25,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     // are used only on approach. Mixed-speed units retain their own speed.
     const reservation=e.order?.arrival;
     let p=reservation&&dist(e,point)<(e.order.arrivalRadius||0)+65?reservation:point;
+    if(p.footprint&&stopAt>5){p=contactPoint(e,p,Math.max(e.r+.1,stopAt-p.r));stopAt=1;}
     const d=dist(e,p),tolerance=stopAt+1;
     if(d<=tolerance){e.vx=e.vy=0;e.nav=null;return true;}
     let goal=p;

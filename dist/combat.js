@@ -1,3 +1,4 @@
+import {surface} from './geometry.js';
 import {SIEGE_WEAPON,FASTER,SCALE,turnTowards} from './unit-profiles.js';
 
 export function createCombat({entities,visible,move,research,shots,clock}) {
@@ -6,7 +7,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   const weapon=e=>e.sieged?SIEGE_WEAPON:e.weapon||{range:e.range,scan:e.range,minimum:0,period:e.cool,point:.12,backswing:.25,damage:e.damage,turret:true};
   const valid=(e,t,w)=>!!t&&t.hp>0&&t.team!==e.team&&!t.loadedIn&&(!t.flying||w.air)&&visible(e,t);
   // Range is measured between footprints, not the two unit centers.
-  const inRange=(e,t,w,slop=0)=>dist(e,t)<=w.range+e.r+t.r+slop&&(!w.minimum||dist(e,t)>=w.minimum+e.r+t.r);
+  const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
   const priority=t=>t.building?(t.damage?20:11):20;
   function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.attackLastSeen=null;e.acquireTime=0;}
   function damage(e,t,w,fraction=1) {
