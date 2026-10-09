@@ -8,8 +8,13 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   const valid=(e,t,w)=>!!t&&t.hp>0&&(t.team!==e.team||e.order?.kind==='attack'&&e.order.target===t&&t!==e)&&!t.planned&&!t.loadedIn&&!t.insideRefinery&&(!t.flying||w.air)&&visible(e,t);
   // Range is measured between footprints, not the two unit centers.
   const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
-  const priority=t=>t.building?(t.damage?20:11):20;
-  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.attackLastSeen=null;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;}
+  const priority=t=>t.attackTargetPriority??(t.building?(t.damage?20:11):20);
+  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.attackTargetMemory=null;e.attackLastSeen=null;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;}
+  function acceptOrder(e) {
+    const o=e.order;
+    // Capture intent at input acceptance, before a simulation loop can hide it.
+    if(o?.kind==='attack'&&valid(e,o.target,weapon(e)))e.attackLastSeen={x:o.target.x,y:o.target.y};
+  }
   function damage(e,t,w,fraction=1) {
     if(t.hp<=0)return;
     const upgrades=research()[e.team]||{},defense=research()[t.team]||{};
@@ -76,14 +81,22 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   }
   function engage(e,dt) {
     if(!e.damage||e.flying||e.transform)return false;
-    const w=weapon(e),o=e.order,manual=o?.kind==='attack',defensive=e.acquireLevel==='Defensive'&&!['attackMove','patrol'].includes(o?.kind);
+    const w=weapon(e);let o=e.order;
+    if(o?.kind==='attackMove'&&e.attackTargetMemory&&valid(e,e.attackTargetMemory,w)) {
+      const {x,y,...intent}=o;
+      o=e.order={...intent,kind:'attack',target:e.attackTargetMemory};e.attackTargetMemory=null;
+    }
+    const manual=o?.kind==='attack',defensive=e.acquireLevel==='Defensive'&&!['attackMove','patrol'].includes(o?.kind);
     const newDamage=e.lastDamageAt>(e.lastAcquireResponseAt??-Infinity);
     e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;
     if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;e.combatResponseTarget=null;e.windup=null;return false;}
     let target=manual?o.target:e.combatTarget;
     const windupSlop=t=>e.windup?.target===t?(w.rangeSlop||0):0;
     const responseRange=Math.max(w.scan,w.range,e.vision||0);
-    const retentionRange=t=>t===e.combatResponseTarget?responseRange:Math.max(w.scan,w.range)+(w.rangeSlop||0);
+    // Scan starts an automatic engagement; it is not a per-tick pursuit cutoff.
+    // Retain visible targets while closing, bounded by our documented vision
+    // policy rather than dropping/reacquiring at the scan boundary.
+    const retentionRange=()=>Math.max(responseRange,Math.max(w.scan,w.range)+(w.rangeSlop||0));
     if(!valid(e,target,w)||(!manual&&(surface(e,target).distance-e.r>retentionRange(target)||(e.hold||e.sieged||defensive)&&!inRange(e,target,w,windupSlop(target)))))target=null;
     if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
     // Catalog weapon damage requests Acquire response. Retaliation uses only a
@@ -105,14 +118,21 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
         if((e.hold||e.sieged||defensive)&&!inRange(e,t,w))continue;
         // Keep an equally important target. A newly closer unit never steals
         // an existing valid attack. Threat priority can supersede a structure.
-        if(!best||priority(t)>priority(best)||!target&&priority(t)===priority(best)&&dist(e,t)<dist(e,best))best=t;
+        if(!best||priority(t)>priority(best)||!target&&priority(t)===priority(best)&&surface(e,t).distance<surface(e,best).distance)best=t;
       }
       target=best;
     }
     if(manual&&!valid(e,target,w)) {
       e.windup=null;e.combatTarget=null;
+      // Dead explicit targets complete in the order executor; do not invent a
+      // new attack-move objective or interfere with a queued successor.
+      if(o.target?.hp<=0){e.attackTargetMemory=null;return false;}
       // Do not read a hidden enemy's live coordinates to chase it through fog.
-      if(e.attackLastSeen)e.order={kind:'attackMove',...e.attackLastSeen};
+      if(e.attackLastSeen) {
+        const {target:lostTarget,...intent}=o;
+        e.attackTargetMemory=lostTarget?.hp>0?lostTarget:null;
+        e.order={...intent,kind:'attackMove',...e.attackLastSeen};
+      }
       return false;
     }
     if(manual&&target)e.attackLastSeen={x:target.x,y:target.y};
@@ -142,5 +162,5 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     }
     return true;
   }
-  return {begin,engage,cancel,weapon,inRange,reset:()=>{missiles=[];}};
+  return {begin,engage,cancel,acceptOrder,weapon,inRange,reset:()=>{missiles=[];}};
 }
