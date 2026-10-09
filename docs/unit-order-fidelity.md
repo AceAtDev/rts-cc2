@@ -38,7 +38,7 @@ Movement's march reservation and march corridor used to apply to pursuit calls a
 
 Movement also recomputed a radial stop-at goal from the attacker's changing position, canceling pending searches even when the enemy stayed still. The movement owner adds stable pending-goal snapshots and retains usable corridors during replacement planning. Combat continues passing the actual target object, retaining target-aware crowd avoidance and live range checks. These are custom solver fixes, not Blizzard navigation code.
 
-Normal automatic attack recovery remains intact. A newly issued explicit Move cancels backswing while preserving cooldown; there is no blanket removal of automatic attack backswing. Native attack-arc interpretation, random delay, call-for-help and exact pursuit trajectories remain open comparison work.
+Normal automatic attack recovery remains intact. A newly issued explicit Move cancels backswing while preserving cooldown; there is no blanket removal of automatic attack backswing. The later [automatic combat pass](automatic-combat-fidelity.md) verifies one native recovery boundary and adds observed idle/Stop ally assistance. Native attack-arc interpretation, random delay, broader assistance edges and exact pursuit trajectories remain open comparison work.
 
 ## Verification
 
