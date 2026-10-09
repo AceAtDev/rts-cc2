@@ -1,0 +1,27 @@
+# Camera, feedback and actor fidelity integration
+
+The previous pass changed models and controls but still used viewport-dependent camera distance, whole-building growth, synchronized global-clock legs, and team-colored health. This pass integrates the reference and animation agents' work into the playable renderer. The scope remains fidelity for the rest of this session.
+
+## Reference-backed presentation
+
+The [pinned camera catalog](https://raw.githubusercontent.com/Talv/sc2-data/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/CameraData.xml) supplies vertical FOV 27.8, player distance/pitch pairs 34/56, 30/52, 26/48, 22/44 and 18/40. Resizing preserves distance and normalized framing at a fixed aspect ratio. Observer zoom is excluded from ordinary player input. [Blizzard's special control guide](https://news.blizzard.com/en-us/article/4552955/game-guide-special-control) supplies Page Up/Down and temporary held Insert/Delete rotation. Pan rate and the opening camera target remain custom. The opening is framed so all eight starting mineral patches remain above the actual console. Bracket vital keys are implemented as held filters; native toggle behavior needs direct observation.
+
+Core actor/UI catalogs supply four damage color bands, separate cyan progress and purple energy, eight dashed hover segments, and distinct active/other subgroup ring colors. Life no longer becomes progress during construction, and wireframes react to damage. Per-unit bar width ratios are imported, while their viewport scale and offsets remain calibrated rather than proven native projection. The [reference audit](fidelity-reference-audit.md) records primary URLs and the conflicting FOV documentation.
+
+Worker labels distinguish mineral assignments from gas, include return trips and hidden gas harvesters, derive ideals from live resources, and disappear for flying bases. Mineral visuals use four fixed-scale geometry groups rather than continuously shrinking obstacles. Native group names and search radius are documented; quarter boundaries and nearest-base association remain inferred. See [resource presentation](resource-presentation-fidelity.md).
+
+## Integrated actor behavior and control corrections
+
+[Unit actors](unit-animation-fidelity.md) advance walking by actual distance, keep upper weapon motion separate, recoil only on real shots, animate SCV tools only while working, and continuously deploy Tank stabilizers. [Building actors](building-animation-fidelity.md) retain a full-size foundation through construction, retract Depot upper geometry, transition flight/landing with catalog actor durations, and show extraction, production and damage activity. Camera rendering can continue during pause without advancing simulation-driven actor poses.
+
+SCVs now turn toward their resource throughout harvest and toward their target throughout build/repair. Renderer heading interpolates the simulation's previous/current angles without an additional exponential turn delay. These changes preserve movement profiles, economy amounts, weapon cooldowns and order semantics.
+
+Scenario reset replaces actors when entity identity changes even if the numeric ID and type are reused. Detached actor geometry is disposed without disposing shared geometry/material caches. Engineering Bay's renderer branch now uses its actual `engineering` type, restoring the model and articulated fan.
+
+Three.js recursive raycasts include hidden descendants. Selection, command targeting and hover now share visible-solid-geometry picking, excluding hidden construction layers, inactive mineral groups, selection circles, shadows and particle effects. This prevents an invisible scaffold or smoke volume from intercepting a command. Physical selection fallback and interaction footprints remain separate.
+
+## Validation and limits
+
+The isolated actor checks verify distance/frame-rate invariance, stopping/pause, cancellation, split tracks, real shot alternation, retained dynamic hierarchy, construction footprint stability, reversible transitions, blocked production and literal damage thresholds. Browser checks exercise actual keyboard/mouse input, all camera stops, normalized resize, hover/selection coexistence, separate vital bars, actual work-facing, reset identity, saturation assignments and discrete mineral meshes. The existing control, worker, combat and placement suites are also run against this integrated renderer. The recorded pass comprises 229 explicit browser checks across twelve suites and 67 isolated movement/actor/resource checks. Screenshots of the opening, army, work pose and construction stages are retained in the ignored local `artifacts/` directory.
+
+These establish regressions for the implemented behavior. They do not establish native-client equivalence. Original M3 skeletons and clip curves, foot locking, full death/turn variants, authored materials and terrain, animated portraits, native building collision/mover transition timing and native human-input trajectories remain absent. The simulation still runs at 60 Hz rather than SC2 Faster's 22.4 loops per second. The current six-unit Terran subset remains incomplete. Exact fidelity requires the [native comparison procedure](native-control-comparison.md), not a passing self-test count.

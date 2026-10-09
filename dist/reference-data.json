@@ -100,8 +100,8 @@
       "title": "Extracted Core camera catalog",
       "url": "https://raw.githubusercontent.com/Talv/sc2-data/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/core.sc2mod/base.sc2data/GameData/CameraData.xml",
       "covers": [
-        "Perspective field of view and pitch",
-        "Five native zoom stops as future comparison"
+        "Perspective field of view, fixed player distance and pitch",
+        "Five player zoom stops and separate observer distances"
       ]
     },
     {
@@ -225,10 +225,13 @@
     "Tank morph times use an older catalog snapshot; full current-patch validation is incomplete",
     "Concussive Shells, Reaper grenade and cliff jumping remain absent",
     "Harvest splitting, automatic flee, peon construction movement, interaction-face search and complete collision flags require comparison with a running SC2 client",
-    "Camera zoom still differs from catalog five distance/pitch stops; default distance is viewport-calibrated",
     "Current-patch subgroup ordering is not fully verified; imported priorities use the pinned 2019 catalog",
     "Native 22.4Hz Faster loops differ from the prototype 60Hz simulation; native traces and human-input captures remain absent",
-    "World models, materials, animations, frame art, wireframes, console font and most portraits remain approximations"
+    "World models, materials, animations, frame art, wireframes, console font and most portraits remain approximations",
+    "Actor rigs, joint curves, stride lengths, stage thresholds, transition easing and effect shapes are authored; native M3 clips and human-input traces are absent",
+    "Building flight/Depot collision flags still switch instantly despite continuous visual actor transitions; full native ability-section timing remains unimplemented",
+    "Mineral capacity-relative quarter boundaries and surface-based nearest-base saturation association are inferred policies; native thresholds/search need measurement",
+    "Native bar-width ratios are used with a custom viewport scale; native projection/offset behavior and bracket-key hold/toggle behavior still need comparison"
   ],
   "verification": {
     "browser": "Chromium with software WebGL",
@@ -239,24 +242,33 @@
     "placement": "18 catalog geometry/placement cases plus actual snapped ghost",
     "workerControls": "Every starting SCV makes trips, group split, exclusive resource harvesting, collision restoration, gas interruption, queued Hold and construction plans",
     "attackControls": "15 pursuit and attack regressions plus six actual mouse/keyboard command paths",
-    "latestChecks": "184 explicit browser checks across nine suites, plus snapped ghost and keyboard/mobile assertions; 10 isolated movement regressions",
+    "latestChecks": "229 explicit browser checks across twelve suites, plus snapped ghost and keyboard/mobile assertions; 67 isolated movement, animation and resource-presentation checks",
     "latestStress": {
       "units": 120,
       "commands": 5,
       "steps": 600,
-      "meanMs": 2.477,
-      "p95Ms": 4.5,
-      "worstMs": 67.2,
+      "meanMs": 2.078,
+      "p95Ms": 3.3,
+      "worstMs": 21.4,
       "commandMsRange": [
-        1.2,
-        6.2
+        1.1,
+        3.4
       ],
       "invalidPositions": 0,
-      "context": "Sub-agent serial final stress with eager click-time A* removed; software WebGL; maximum exceeds one 60Hz frame, so smoothness is not established"
+      "context": "Serial integrated-pass simulation stress; software WebGL. Worst simulation step exceeds a 60 Hz frame; rendered smoothness and native equivalence remain unverified."
     },
     "gameplayFollowup": "31 regressions including actual Shift+C, cargo destinations, repair/patrol, one builder, gas waiting, supply, F1 and subgroup order",
-    "visualFollowup": "11 integrated checks including desktop/mobile console bounds, perspective camera, resource mesh reset, actual cargo model click and HUD-aware same-type selection",
-    "movementFollowup": "10 regressions for enemy anchoring, near-contact yielding, shared-goal start delay, cancellation, fairness, inner radius and enclosed contact cells"
+    "visualFollowup": "12 integrated checks including desktop/mobile console bounds, perspective camera, complete opening mineral framing, resource mesh reset, actual cargo model click and HUD-aware same-type selection",
+    "movementFollowup": "10 regressions for enemy anchoring, near-contact yielding, shared-goal start delay, cancellation, fairness, inner radius and enclosed contact cells",
+    "presentationFidelity": "24 actual input/render checks: all five camera stops, resolution-independent distance/framing, temporary rotation and screen-relative pan, separate vital palettes, subgroup selection, dashed hover, HUD leave and Engineering Bay geometry",
+    "animationIntegration": "11 live checks for sustained harvesting/build facing, scenario actor identity, mineral/gas saturation, hidden flying labels, discrete mineral geometry, direct heading interpolation and real shot telemetry",
+    "visibleActorPicking": "8 live checks using a discovered raw invisible-scaffold intersection; actual hover and right-click pass through hidden geometry and clear on HUD entry",
+    "isolatedActorChecks": {
+      "unitAnimation": 30,
+      "buildingAnimation": 11,
+      "resourcePresentation": 16,
+      "movement": 10
+    }
   },
   "combatImplementation": {
     "targeting": "Persistent targets, explicit overrides, range-limited acquisition, Move suppression, both-team vision; defensive idle SCVs, automatic flee and explicit friendly targets",
@@ -269,8 +281,10 @@
     "resources": "Mineral 2\u00d71 footprints and catalog 8\u00d77 NearResources mask"
   },
   "visualImplementation": {
-    "camera": "Perspective, vertical FOV27.8 degrees, pitch56; viewport-calibrated distance and prototype zoom remain",
+    "camera": "Perspective vertical FOV27.8; fixed distance34/pitch56; five player distance/pitch stops34/56,30/52,26/48,22/44,18/40; temporary held Insert/Delete rotation",
     "scene": "Custom beveled Terran models, articulated SCVs, distinguishable cargo, procedural terrain normal map, contact shadows and material batching",
-    "console": "Stepped geometry, square command cells, original green SVG wireframes for three types; Oxanium font approximation"
+    "console": "Stepped geometry, square command cells, original green SVG wireframes for three types; Oxanium font approximation",
+    "actors": "Authored distance-driven split-body articulation; actual shot telemetry; SCV work tools; continuous Tank stabilizers; full-footprint building construction, Depot retraction, actor-timed lift/land, production/extraction activity and damage states",
+    "feedback": "Eight-segment dashed hover, solid active/inactive subgroup selection, separate native life/progress/energy palettes, damage-colored original wireframes, independent mineral/gas worker counts, discrete fixed-scale mineral geometry"
   }
 }

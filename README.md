@@ -34,7 +34,9 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 | Backspace / Space | Cycle bases / recent notifications |
 | Ctrl-F5–F8 / F5–F8 | Save / recall a camera position |
 | Arrows / screen edges / middle drag | Pan the camera |
-| Scroll / Page Up / Page Down | Zoom |
+| Scroll / Page Up / Page Down | Five player distance/pitch zoom stops |
+| Hold Insert / Delete | Temporarily rotate camera left / right |
+| Hold Alt / [ / ] | All / friendly / enemy overhead vital bars |
 | SCV: B → S / B → B / V → F | Build Depot / Barracks / Factory |
 | Factory: X, then S | Build a Tech Lab, then train a Siege Tank |
 | Tank: E / D | Siege / Unsiege |
@@ -47,7 +49,10 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 - Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
 - Persistent combat targets, cancelable attack windup, cooldown preservation, projectiles, Reaper bursts/regeneration, Hellion flame lines, and friendly siege splash.
 - Stepped Terran console with square 5 × 3 command cells, original green selection wireframes, and a locally bundled console font.
-- Perspective camera with catalog field of view and pitch, beveled Terran silhouettes, visible cargo and contact shadows.
+- Perspective camera with catalog field of view, fixed world distance, five distance/pitch stops, and temporary camera rotation.
+- Distance-driven articulated walking, separate work/weapon tracks, shot-driven recoil, Tank stabilizer deployment, and SCV tools.
+- Full-footprint construction stages, smooth Depot retraction and building lift/land, extraction pumps, production activity, and damage effects.
+- Distinct hover/selection rings, active subgroup colors, damage-colored vitals/wireframes, independent construction/energy bars, mineral/gas saturation labels, and discrete mineral meshes.
 - Grid-snapped building placement, per-cell validity and add-on pads, catalog path contours, lowered-Depot pathing, and separate placement occupancy.
 - Worker mineral walking, exclusive harvesting, smart local splitting, gas entrance/exit and waiting, queued cargo return, one maintained construction worker, repair autocast during Patrol, and nearest-builder selection.
 - Resource gathering, construction, production queues, rally orders, add-ons, research, lift/land, and an opponent using its own economy.
@@ -65,7 +70,11 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
 - `docs/gameplay-audit-followup.md`, `docs/visual-design-followup.md`: reproduced failures and reference-driven changes.
 - `docs/native-control-comparison.md`, `tests/native_compare/`: native capture/comparison procedure; no native traces have been collected here.
-- `dist/renderer.js`: 3D scene, models, interpolation, and battlefield overlays.
+- `dist/renderer.js`: 3D scene, visible-geometry picking, models, interpolation, and battlefield overlays.
+- `dist/camera-profile.js`, `dist/presentation-profile.js`: catalog camera stops and vital palettes.
+- `dist/unit-animation.js`, `dist/building-animation.js`: authored state-driven actor rigs and transitions.
+- `dist/resource-presentation.js`: discrete mineral states and separate mineral/gas worker labels.
+- `docs/fidelity-integration.md`: current presentation evidence, checks, and native comparison limits.
 - `dist/native-data.js`: Terran unit definitions and Standard command cards.
 - `dist/reference-data.json`: research sources, screenshot references, asset provenance, and known differences.
 - `tests/`: browser control checks, input checks, and movement stress exercises.
@@ -88,6 +97,12 @@ python3 tests/attack_controls.py
 python3 tests/command_clicks.py
 python3 tests/gameplay_followup.py
 python3 tests/visual_followup.py
+python3 tests/presentation_fidelity.py
+python3 tests/animation_integration.py
+python3 tests/visible_actor_picking.py
+node tests/unit_animation_fidelity.mjs
+node tests/building_animation_fidelity.mjs
+node tests/resource_presentation_fidelity.mjs
 node tests/movement_followup.mjs
 python3 tests/movement_stress.py
 ```
