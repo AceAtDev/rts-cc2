@@ -11,11 +11,16 @@ export function createNavigation({world,obstacles}){
   const invalidate=()=>{version++;grids.clear();routes.clear();};
   const inWorld=(p,r)=>p.x>=r&&p.y>=r&&p.x<=world.w-r&&p.y<=world.h-r;
   function clear(a,b,r,ignore=null){return inWorld(b,r)&&!obstacles().some(o=>o.entity!==ignore&&segmentBlocked(a,b,r,o));}
-  function open(p,r,ignore=null){return inWorld(p,r)&&!obstacles().some(o=>o.entity!==ignore&&surface(p,o).distance<r-1e-6);}
+  function pointBlocked(p,r,o){
+    const b=o.bounds||bounds(o);if(p.x<b.x0-r||p.x>b.x1+r||p.y<b.y0-r||p.y>b.y1+r)return false;
+    if(!o.footprint)return(p.x-o.x)**2+(p.y-o.y)**2<(o.r+r)**2-1e-6;
+    return surface(p,o).distance<r-1e-6;
+  }
+  function open(p,r,ignore=null){return inWorld(p,r)&&!obstacles().some(o=>o.entity!==ignore&&pointBlocked(p,r,o));}
   function project(p,r,ignore=null){
     let q={x:Math.max(r,Math.min(world.w-r,p.x)),y:Math.max(r,Math.min(world.h-r,p.y))};
     for(let pass=0;pass<8;pass++){
-      let changed=false;for(const o of obstacles())if(o.entity!==ignore&&surface(q,o).distance<r-.000001){q=contactPoint(q,o,r+.05);changed=true;}
+      let changed=false;for(const o of obstacles())if(o.entity!==ignore&&pointBlocked(q,r,o)){q=contactPoint(q,o,r+.05);changed=true;}
       if(!changed&&open(q,r,ignore))return q;
     }
     for(let d=7;d<280;d+=7)for(let j=0;j<32;j++){const v={x:p.x+Math.cos(j*Math.PI/16)*d,y:p.y+Math.sin(j*Math.PI/16)*d};if(open(v,r,ignore))return v;}
@@ -27,7 +32,7 @@ export function createNavigation({world,obstacles}){
     for(let y=0;y<ny;y++)for(let x=0;x<nx;x++)if(!inWorld({x:x*pitch,y:y*pitch},radius))grid[y*nx+x]=1;
     for(const o of obstacles()){
       const b=o.bounds||bounds(o),x0=Math.max(0,Math.ceil((b.x0-radius)/pitch)),x1=Math.min(nx-1,Math.floor((b.x1+radius)/pitch)),y0=Math.max(0,Math.ceil((b.y0-radius)/pitch)),y1=Math.min(ny-1,Math.floor((b.y1+radius)/pitch));
-      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(!grid[y*nx+x]&&surface({x:x*pitch,y:y*pitch},o).distance<radius-1e-6)grid[y*nx+x]=1;
+      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(!grid[y*nx+x]&&pointBlocked({x:x*pitch,y:y*pitch},radius,o))grid[y*nx+x]=1;
     }
     grids.set(key,grid);return grid;
   }

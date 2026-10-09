@@ -47,6 +47,8 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 - Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
 - Persistent combat targets, cancelable attack windup, cooldown preservation, projectiles, Reaper bursts/regeneration, Hellion flame lines, and friendly siege splash.
 - Fixed 5 × 3 command-card positions based on researched SC2 references.
+- Grid-snapped building placement, per-cell validity and add-on pads, catalog path contours, lowered-Depot pathing, and separate placement occupancy.
+- Worker mineral walking, exclusive harvesting, smart local splitting, gas entrance/exit, queued construction plans and nearest-builder selection.
 - Resource gathering, construction, production queues, rally orders, add-ons, research, lift/land, and an opponent using its own economy.
 
 The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege Tank. Other reference buttons explain their unavailable state in their tooltips. Multiplayer, air combat, a full tech tree, other races, and campaigns remain outside the current implementation.
@@ -56,6 +58,8 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `dist/game.js`: simulation, orders, selection, controls, economy, and HUD updates.
 - `dist/unit-profiles.js`: extracted movement and weapon numbers with Faster-speed conversion.
 - `dist/movement.js`: route following, crowd steering, destination reservations, and collisions.
+- `dist/geometry.js`, `dist/placement.js`, `dist/navigation.js`: footprints, placement cells, interaction surfaces and static pathing.
+- `dist/workers.js`: harvest ownership, timings, resource splitting, return trips and interruptions.
 - `dist/combat.js`: acquisition, weapon phases, projectiles, damage, and regeneration.
 - `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
 - `dist/renderer.js`: 3D scene, models, interpolation, and battlefield overlays.
@@ -83,3 +87,5 @@ The scripts use a system Chromium executable when available, otherwise Playwrigh
 ## Third-party material
 
 StarCraft II button and resource artwork belongs to Blizzard Entertainment. Its source references and preserved notices are in `dist/reference-data.json` and `dist/assets/icons/`. Three.js is bundled with its MIT license in `dist/vendor/THREE-LICENSE.txt`. Those notices apply to their respective third-party materials.
+
+The worker/placement follow-up adds `tests/building_grid.py`, `tests/worker_controls.py`, `tests/attack_controls.py`, and `tests/command_clicks.py`. These cover footprint grids, resource interruptions, mining traffic, construction plans, melee pursuit, shot range slop, and actual command targeting. Passing them does not establish exact SC2 control fidelity; native-client comparison remains required.

@@ -43,9 +43,9 @@ export function contactPoint(p,shape,padding){const q=surface(p,shape);return{x:
 const cross=(a,b,c)=>(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
 function intersects(a,b,c,d){const p=cross(a,b,c),q=cross(a,b,d),r=cross(c,d,a),s=cross(c,d,b);return p*q<0&&r*s<0;}
 export function segmentBlocked(a,b,r,shape){
-  if(!shape.footprint){const p=pointSegment(shape,a,b);return (p.x-shape.x)**2+(p.y-shape.y)**2<(shape.r+r)**2-1e-6;}
   const box=shape.bounds||bounds(shape);
   if(Math.max(a.x,b.x)<box.x0-r||Math.min(a.x,b.x)>box.x1+r||Math.max(a.y,b.y)<box.y0-r||Math.min(a.y,b.y)>box.y1+r)return false;
+  if(!shape.footprint){const dx=b.x-a.x,dy=b.y-a.y,l=dx*dx+dy*dy,t=Math.max(0,Math.min(1,((shape.x-a.x)*dx+(shape.y-a.y)*dy)/(l||1))),x=a.x+dx*t-shape.x,y=a.y+dy*t-shape.y;return x*x+y*y<(shape.r+r)**2-1e-6;}
   if(surface(a,shape).distance<r-1e-6||surface(b,shape).distance<r-1e-6)return true;
   for(let i=0,j=shape.footprint.length-1;i<shape.footprint.length;j=i++){
     const [ax,ay]=shape.footprint[j],[bx,by]=shape.footprint[i],c={x:shape.x+ax,y:shape.y+ay},d={x:shape.x+bx,y:shape.y+by};

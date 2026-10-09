@@ -108,6 +108,13 @@
       "studied": [
         "Sieged Tank command slots"
       ]
+    },
+    {
+      "url": "https://i.sstatic.net/0C3kk.gif",
+      "studied": [
+        "Green placement hologram",
+        "Ground placement footprint"
+      ]
     }
   ],
   "assetSources": [
@@ -138,8 +145,9 @@
   "movementImplementation": {
     "simulationHz": 60,
     "rendering": "Interpolated 3D scene with independent turret facing",
-    "pathPlanning": "Radius-aware cached A*, shared group corridors, deterministic four-request fallback queue",
-    "localMovement": "Per-unit catalog profiles, compact destination reservations, predictive avoidance, sideways idle yielding, anchored Hold/Siege and collision settling"
+    "pathPlanning": "Half-unit cached A* using catalog building contours and actual unit radii, with shared group corridors and a deterministic fallback queue",
+    "localMovement": "Per-unit catalog profiles, compact destination reservations, predictive avoidance, sideways idle yielding, anchored Hold/Siege and collision settling",
+    "workers": "Harvest orders bypass ordinary mobile collision; exclusive resource ownership; catalog mineral/gas timings; reachable resource faces"
   },
   "knownDifferences": [
     "Custom 3D models and terrain rather than the original game assets",
@@ -151,17 +159,38 @@
     "Navigation, arrival reservations, steering, turn integration, targeting priorities, pursuit and attack arcs remain custom policies; not verified identical to SC2",
     "Weapon randomness, missile acceleration and exact effect conditions are omitted; shots quantize to 60 Hz",
     "Tank morph times use an older catalog snapshot; full current-patch validation is incomplete",
-    "Concussive Shells, Reaper grenade and cliff jumping remain absent"
+    "Concussive Shells, Reaper grenade and cliff jumping remain absent",
+    "Harvest splitting, automatic flee, peon construction movement, interaction-face search and complete collision flags require comparison with a running SC2 client"
   ],
   "verification": {
     "browser": "Chromium with software WebGL",
     "controls": "Selection modifiers, Standard hotkeys, control-group stealing, subgroups, order queues, minimap commands, camera locations, idle workers",
     "movement": "24 units route around rock and settle; held units remain anchored; rapid reversal responds; 120-unit repeated-command stress exercise",
     "gameplay": "Gathering, construction queue back to mining, producer rally, Tech Lab requirement, Stim research gate, siege mode, resource-limited AI opening",
-    "unitMechanics": "41 browser behavior regressions including canceled shots, cooldowns, target persistence, projectile flight, per-hit armor, flame geometry, friendly splash and regeneration"
+    "unitMechanics": "41 browser behavior regressions including canceled shots, cooldowns, target persistence, projectile flight, per-hit armor, flame geometry, friendly splash and regeneration",
+    "placement": "18 catalog geometry/placement cases plus actual snapped ghost",
+    "workerControls": "Every starting SCV makes trips, group split, exclusive resource harvesting, collision restoration, gas interruption, queued Hold and construction plans",
+    "attackControls": "15 pursuit and attack regressions plus six actual mouse/keyboard command paths",
+    "latestChecks": "142 explicit checks across seven browser suites, plus snapped ghost assertion",
+    "latestStress": {
+      "units": 120,
+      "commands": 5,
+      "steps": 600,
+      "isolatedMeanMs": 2.15,
+      "isolatedP95Ms": 4.3,
+      "isolatedMaxMs": 13.2,
+      "invalidPositions": 0,
+      "qualification": "Simulation CPU time with software WebGL, not rendered FPS or native-client equivalence. A contended run had a 158.6 ms outlier."
+    }
   },
   "combatImplementation": {
-    "targeting": "Persistent targets, explicit overrides, range-limited acquisition, Move suppression, both-team vision",
-    "weapons": "Cancelable windup/recovery, preserved cooldowns, per-hit armor, attribute bonuses, missile travel, flame line, friendly siege splash, minimum range, Reaper burst and regen"
+    "targeting": "Persistent targets, explicit overrides, range-limited acquisition, Move suppression, both-team vision; defensive idle SCVs, automatic flee and explicit friendly targets",
+    "weapons": "Cancelable windup/recovery, preserved cooldowns, per-hit armor, attribute bonuses, missile travel, flame line, friendly siege splash, minimum range, Reaper burst and regen; one-unit windup range slop"
+  },
+  "buildingPlacement": {
+    "grid": "One game unit; integer centers for even footprints, half-unit centers for odd footprints",
+    "footprints": "Separate placement square and catalog path contour; 2\u00d72 Depot/add-ons, 3\u00d73 production/refinery, 5\u00d75 Command Center",
+    "preview": "Green/red hologram, individually validated cells and optional add-on pad",
+    "resources": "Mineral 2\u00d71 footprints and catalog 8\u00d77 NearResources mask"
   }
 }
