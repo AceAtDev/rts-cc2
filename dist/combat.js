@@ -12,7 +12,8 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   // Range is measured between footprints, not the two unit centers.
   const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
   const priority=t=>t.attackTargetPriority??(t.building?(t.damage?20:11):20);
-  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.attackTargetMemory=null;e.attackLastSeen=null;e.combatHelp=null;e.consumedCombatHelp=null;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;idleThisLoop.delete(e);}
+  const armed=t=>!!(t.weapon?.damage??t.damage);
+  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.attackTargetMemory=null;e.attackLastSeen=null;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;idleThisLoop.delete(e);}
   function acceptOrder(e) {
     const o=e.order;
     // Capture intent at input acceptance, before a simulation loop can hide it.
@@ -29,7 +30,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     if(e.team!==t.team&&clock()-(t.lastCombatHelpAt??-Infinity)>=helpPeriod) {
       t.lastCombatHelpAt=clock();const call={attacker:e,at:clock()};
       for(const ally of entities())if(ally!==t&&ally.team===t.team&&ally.hp>0&&ally.damage&&
-        !ally.loadedIn&&!ally.insideRefinery&&!ally.planned&&!ally.flying&&dist(ally,t)<=helpRadius) {
+        !ally.loadedIn&&!ally.insideRefinery&&!ally.planned&&!ally.flying&&surface(ally,t).distance-ally.r<=helpRadius) {
         ally.combatHelp=call;helpThisLoop.add(ally);
       }
     }
@@ -99,8 +100,8 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     const attacker=call.attacker;
     if(valid(e,attacker,w)&&surface(e,attacker).distance-e.r<=Math.max(w.scan,w.range,e.vision||0)&&
       (!(e.hold||e.sieged||defensive)||inRange(e,attacker,w))&&
-      (!target||priority(attacker)>priority(target))) {
-      e.combatResponseTarget=attacker;return attacker;
+      (!target||priority(attacker)>priority(target)||priority(attacker)===priority(target)&&armed(attacker)&&!armed(target))) {
+      e.combatResponseTarget=attacker;e.combatHelpApproachAt=call.at;return attacker;
     }
     return target;
   }
@@ -170,6 +171,9 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     if(!target){e.windup=null;if(!o&&!e.hold&&!e.sieged&&Math.hypot(e.vx||0,e.vy||0)<1e-8)idleThisLoop.add(e);return false;}
     if(!inRange(e,target,w,windupSlop(target))) {
       e.windup=null;
+      // Controlled native assistance assigns a target on the damage loop,
+      // then begins approach on the following normal loop, in either order.
+      if(e.combatHelpApproachAt===clock()){e.vx=e.vy=0;return true;}
       if(e.backswing>0){e.vx=e.vy=0;return true;}
       if(!e.hold&&!e.sieged&&!e.building)move(e,target,dt,w.range+e.r+target.r-1);
       else e.vx=e.vy=0;
@@ -198,18 +202,17 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   }
   function flushHelp(dt) {
     const reacted=[];
-    // Only helpers that already spent this loop idle can move here. Never run
-    // engage/cooldown/attack phases twice, or advance a travelling unit twice.
+    // Assign help targets for already-processed idle units. Approach begins on
+    // their next normal loop; never replay engage/cooldown/attack/movement.
     for(const e of helpThisLoop)if(processedThisLoop.has(e)&&idleThisLoop.has(e)&&e.hp>0&&!e.order&&
       !e.hold&&!e.sieged&&!e.loadedIn&&!e.insideRefinery&&!e.flying&&!e.transform&&!e.combatTarget) {
       const w=weapon(e),target=assistance(e,w,null,null,e.acquireLevel==='Defensive');
       if(!target)continue;
       e.combatTarget=target;idleThisLoop.delete(e);reacted.push(e);
-      if(!inRange(e,target,w)&&!e.building)move(e,target,dt,w.range+e.r+target.r-1);
-      else e.vx=e.vy=0;
+      e.vx=e.vy=0;
     }
     helpThisLoop.clear();return reacted;
   }
-  function reset(){missiles=[];processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatHelp=null;e.consumedCombatHelp=null;e.lastCombatHelpAt=undefined;}}
+  function reset(){missiles=[];processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.lastCombatHelpAt=undefined;}}
   return {begin,engage,flushHelp,cancel,acceptOrder,weapon,inRange,reset};
 }

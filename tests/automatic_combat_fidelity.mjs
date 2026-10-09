@@ -20,10 +20,11 @@ const assistance=(team=0)=>{
   const h=make([helper,victim,attacker]);return {...h,h,helper,victim,attacker};
 };
 let checks=0;const check=(name,fn)=>{fn();checks++;console.log('PASS',name);};
-for(const team of [0,1])check(`Team ${team} idle Marine assists a damaged ally outside ordinary enemy scan on loop 2`,()=>{
+for(const team of [0,1])check(`Team ${team} idle Marine acquires help on loop 2 and approaches on loop 3`,()=>{
   const {h,helper,victim,attacker}=assistance(team);h.step();assert.equal(helper.combatTarget,null);h.step();
   assert(victim.hp<1000);assert.equal(helper.combatTarget,attacker);
-  assert.deepEqual(h.moves.filter(m=>m.id===helper.id).map(m=>m.loop),[2]);
+  assert.equal(h.moves.filter(m=>m.id===helper.id).length,0);h.step();
+  assert.deepEqual(h.moves.filter(m=>m.id===helper.id).map(m=>m.loop),[3]);
 });
 check('Stop exposes the same idle helper response',()=>{
   const {h,helper,attacker}=assistance();h.combat.cancel(helper);helper.order=null;h.step(2);assert.equal(helper.combatTarget,attacker);
@@ -32,8 +33,24 @@ check('Hold does not leave position to assist a distant ally',()=>{
   const {h,helper}=assistance();helper.hold=true;h.step(10);assert.equal(helper.combatTarget,null);
   assert.equal(h.moves.filter(m=>m.id===helper.id).length,0);
 });
-check('Current helper-center bound excludes calls beyond the imported four-unit radius',()=>{
-  const {h,helper}=assistance();helper.x=35.99*SCALE;h.step(2);assert.equal(helper.combatTarget,null);
+for(const gap of [4.01,4.375,4.75])check(`Native helper boundary includes both radii at center separation ${gap}`,()=>{
+  const {h,helper,attacker}=assistance();helper.x=(40-gap)*SCALE;h.step(2);assert.equal(helper.combatTarget,attacker);
+});
+check('Native helper boundary excludes center separation five for two .375-radius units',()=>{
+  const {h,helper}=assistance();helper.x=35*SCALE;h.step(2);assert.equal(helper.combatTarget,null);
+});
+for(const [gap,responds] of [[4.75,true],[4.76001,false],[5,false]])check(`Perpendicular native boundary ${gap} ${responds?'assists':'does not assist'} within sight`,()=>{
+  const {h,helper,attacker,victim}=assistance();helper.x=(40-gap)*SCALE;
+  attacker.x=victim.x;attacker.y=victim.y+5*SCALE;attacker.angle=-Math.PI/2;h.step(2);
+  assert.equal(helper.combatTarget,responds?attacker:null);
+});
+for(const [type,shouldSwitch] of [['overlord',true],['marine',false]])check(`Assistance ${shouldSwitch?'replaces unarmed':'retains armed'} established ${type} target`,()=>{
+  const helper=unit(1,'marine',0,36*SCALE),victim=unit(2,'worker',0,40*SCALE),attacker=unit(3,'marine',1,44*SCALE);
+  const current=unit(4,'marine',1,38*SCALE);current.type=type;current.damage=0;
+  if(type==='overlord'){delete current.weapon;current.flying=true;}
+  helper.combatTarget=current;victim.hold=true;victim.response='Flee';attacker.angle=Math.PI;attacker.order={kind:'attack',target:victim};
+  const h=make([attacker,helper,victim]);h.step(2);
+  assert.equal(helper.combatTarget,shouldSwitch?attacker:current);
 });
 for(const kind of ['move','follow','land','flee','mine','gas','return','build','repair'])check(`${kind} intent is not interrupted by an ally call`,()=>{
   const {h,helper,attacker}=assistance();const order=helper.order={kind,x:30*SCALE,y:42*SCALE,target:attacker};
@@ -55,7 +72,7 @@ check('flushHelp is idempotent and never advances an existing windup or cooldown
   const {h,helper}=assistance();h.step(2,false);const cd=helper.cooldown;
   assert.equal(h.combat.flushHelp(DT).length,1);assert.equal(h.combat.flushHelp(DT).length,0);
   assert.equal(helper.cooldown,cd);assert.equal(helper.windup,null);assert.equal(helper.visualShotSerial,undefined);
-  assert.equal(h.moves.filter(m=>m.id===helper.id).length,1);
+  assert.equal(h.moves.filter(m=>m.id===helper.id).length,0);h.step();assert.equal(h.moves.filter(m=>m.id===helper.id).length,1);
 });
 check('A travelling attack-move helper receives assistance without a second movement in the same loop',()=>{
   const {h,helper}=assistance();helper.order={kind:'attackMove',x:50*SCALE,y:42*SCALE};helper.vx=helper.speed;
@@ -66,7 +83,8 @@ check('A helper processed after damage reacts normally without requiring flush',
   const helper=unit(1,'marine',0,36*SCALE),victim=unit(2,'worker',0,40*SCALE),attacker=unit(3,'marine',1,44*SCALE);
   victim.hold=true;victim.response='Flee';attacker.angle=Math.PI;attacker.order={kind:'attack',target:victim};
   const h=make([attacker,helper,victim]);h.step(2,false);assert.equal(helper.combatTarget,attacker);
-  assert.equal(h.moves.filter(m=>m.id===helper.id).length,1);assert.equal(h.combat.flushHelp(DT).length,0);
+  assert.equal(h.moves.filter(m=>m.id===helper.id).length,0);assert.equal(h.combat.flushHelp(DT).length,0);
+  h.step(1,false);assert.deepEqual(h.moves.filter(m=>m.id===helper.id).map(m=>m.loop),[3]);
 });
 check('Repeated hits throttle calls by the catalog two-Normal-second period',()=>{
   const {h,helper,attacker,victim}=assistance();h.step(2);const call=helper.combatHelp;
