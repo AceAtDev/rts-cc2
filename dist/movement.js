@@ -25,7 +25,9 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     const radius=terrainRadius(e);
     // The destination is shared during travel; individual footprint reservations
     // are used only on approach. Mixed-speed units retain their own speed.
-    const reservation=e.order?.arrival;
+    // A combat pursuit may temporarily interrupt an attack-move order. Its
+    // formation slot belongs to the order destination, never to the target.
+    const reservation=point===e.order?e.order?.arrival:null;
     let p=reservation&&dist(e,point)<(e.order.arrivalRadius||0)+65?reservation:point;
     if(p.footprint&&stopAt>5){
       const target=p,padding=Math.max(e.r+.1,stopAt-p.r),version=navVersion();
@@ -46,24 +48,44 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       p=e.interaction.goal;stopAt=1;
     }
     const d=dist(e,p),tolerance=stopAt+1;
-    if(d<=tolerance){e.vx=e.vy=0;e.nav=null;return true;}
+    if(d<=tolerance){e.vx=e.vy=0;e.nav=null;e.movementRequest=null;return true;}
     let goal=p;
     if(stopAt>5){const k=(d-stopAt)/d;goal={x:e.x+(p.x-e.x)*k,y:e.y+(p.y-e.y)*k};}
     let dest=goal;
+    const version=navVersion(),movingTarget=point!==e.order&&point.hp!==undefined&&!point.footprint;
+    if(e.movementRequest&&(e.movementRequest.order!==e.order||e.movementRequest.target!==point||e.movementRequest.version!==version))e.movementRequest=null;
     if(!e.flying&&!clear(e,goal,radius)) {
-      const key=Math.round(goal.x/14)+','+Math.round(goal.y/14)+','+navVersion();
+      let key=Math.round(goal.x/14)+','+Math.round(goal.y/14)+','+version;
+      // Retarget the final clear leg without discarding a usable corridor each
+      // time a chased unit crosses a planning cell.
+      if(movingTarget&&e.nav?.length&&e.navTarget===point&&e.navOrder===e.order&&e.navVersion===version){
+        const before=e.nav[e.nav.length-2]||e;
+        if(clear(before,goal,radius)){e.nav[e.nav.length-1]={...goal};e.navKey=key;}
+      }
       if(!e.nav||e.navKey!==key) {
         let shared=null;
-        const corridor=e.order?.corridor;
+        const corridor=point===e.order?e.order?.corridor:null;
         if(corridor?.length&&e.order.corridorVersion===navVersion()) {
           const entry=corridor.findIndex(p=>clear(e,p,radius));
           if(entry>=0){shared=corridor.slice(entry).map(p=>({...p}));const before=shared[shared.length-2]||e;if(clear(before,goal,radius))shared[shared.length-1]={...goal};else shared=null;}
         }
-        if(shared){e.nav=shared;e.navKey=key;}
+        if(shared){e.nav=shared;e.navKey=key;e.navTarget=point;e.navOrder=e.order;e.navVersion=version;}
         else if(path.request||requests<4){
-          requests++;const route=path.request?path.request(e,goal):path(e,goal);
-          if(route===null){e.vx=e.vy=0;return false;}
-          e.nav=route;e.navKey=key;
+          // Finish one bounded search to a snapshot before accepting a new
+          // moving-target endpoint. Otherwise target motion can cancel every
+          // frontier before any route is produced, leaving the pursuer idle.
+          let requestGoal=goal;
+          if(movingTarget){
+            e.movementRequest??={order:e.order,target:point,version,goal:{...goal},key};
+            requestGoal=e.movementRequest.goal;key=e.movementRequest.key;
+          }
+          requests++;const route=path.request?path.request(e,requestGoal):path(e,requestGoal);
+          if(route===null){
+            if(!e.nav?.length||e.navVersion!==version||e.navOrder!==e.order||e.navTarget!==point){e.vx=e.vy=0;return false;}
+          }else{
+            e.movementRequest=null;e.nav=route;e.navKey=key;
+            e.navTarget=point;e.navOrder=e.order;e.navVersion=version;
+          }
           // An open contact point can lie in a sealed pocket between fields.
           // Select a reachable face instead of retrying that pocket forever.
           if(!e.nav.length&&e.interaction?.target===point){
@@ -85,7 +107,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       while(e.nav.length>1&&dist(e,e.nav[0])<8)e.nav.shift();
       for(let i=e.nav.length-1;i>0;i--)if(clear(e,e.nav[i],radius)){e.nav.splice(0,i);break;}
       dest=e.nav[0];
-    }
+    }else e.movementRequest=null;
     let dx=dest.x-e.x,dy=dest.y-e.y,len=length(dx,dy);
     if(len<.001){e.nav=null;return false;}
     const speed=e.speed*(e.stim?1.5:1)*(e.slow? .5:1);
