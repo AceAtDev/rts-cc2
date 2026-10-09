@@ -11,7 +11,15 @@ export function createPlacement({defs,entities,minerals,geysers,rocks,world,visi
     if(rocks.some(o=>circleRectangle(o,box)))return false;
     if(entities().some(e=>e!==ignore&&e.hp>0&&e.building&&!e.flying&&rectangleOverlap(box,bounds(e,true))))return false;
     for(const n of minerals())if(n.amount>0){
-      const b=bounds(n,true);if(type==='core'){b.x0-=3*GRID;b.x1+=3*GRID;b.y0-=3*GRID;b.y1+=3*GRID;}
+      const b=bounds(n,true);if(type==='core'){
+        b.x0-=3*GRID;b.x1+=3*GRID;b.y0-=3*GRID;b.y1+=3*GRID;
+        if(!rectangleOverlap(box,b))continue;
+        const overlap={x0:Math.max(box.x0,b.x0),x1:Math.min(box.x1,b.x1),y0:Math.max(box.y0,b.y0),y1:Math.min(box.y1,b.y1)};
+        // The 8×7 NearResources layer leaves its four corner cells clear.
+        const cornerX=overlap.x1<=b.x0+GRID+1e-6||overlap.x0>=b.x1-GRID-1e-6;
+        const cornerY=overlap.y1<=b.y0+GRID+1e-6||overlap.y0>=b.y1-GRID-1e-6;
+        if(cornerX&&cornerY)continue;
+      }
       if(rectangleOverlap(box,b))return false;
     }
     if(type!=='refinery'&&geysers().some(g=>rectangleOverlap(box,{x0:g.x-1.5*GRID,x1:g.x+1.5*GRID,y0:g.y-1.5*GRID,y1:g.y+1.5*GRID})))return false;

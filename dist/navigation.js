@@ -43,6 +43,7 @@ export function createNavigation({world,obstacles}){
   function path(e,target){
     const r=e.r,end=project(target,r);if(clear(e,end,r))return[end];
     const grid=gridFor(r),start=connector(e,r,grid),goal=connector(end,r,grid);if(start<0||goal<0)return[];
+    if(start!==goal){let exit=false;const x=goal%nx,y=Math.floor(goal/nx);for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const xx=x+dx,yy=y+dy,q=yy*nx+xx;if(xx>=0&&yy>=0&&xx<nx&&yy<ny&&!grid[q]&&clear(nodePoint(goal),nodePoint(q),r))exit=true;}if(!exit)return[];}
     const key=[start,goal,r,version].join(':');if(routes.has(key)){const route=routes.get(key).map(p=>({...p}));route[route.length-1]=end;return route;}
     const score=new Float64Array(nx*ny).fill(Infinity),prev=new Int32Array(nx*ny).fill(-1),closed=new Uint8Array(nx*ny),heap=new Heap(),heuristic=n=>Math.hypot(n%nx-goal%nx,Math.floor(n/nx)-Math.floor(goal/nx));
     score[start]=0;heap.push({n:start,f:heuristic(start)});let found=false;

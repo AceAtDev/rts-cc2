@@ -1,3 +1,4 @@
+import {ignoreWorkerCollision} from './workers.js';
 import {contactPoint} from './geometry.js';
 import {turnTowards} from './unit-profiles.js';
 
@@ -9,7 +10,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function begin() {
     requests=0;cells=new Map();
-    for(const e of entities()) if(!e.building&&!e.loadedIn&&e.hp>0&&!e.flying) {
+    for(const e of entities()) if(!e.building&&!e.loadedIn&&!e.insideRefinery&&e.hp>0&&!e.flying) {
       const key=Math.floor(e.x/56)+','+Math.floor(e.y/56);
       if(!cells.has(key))cells.set(key,[]);cells.get(key).push(e);
     }
@@ -25,7 +26,24 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     // are used only on approach. Mixed-speed units retain their own speed.
     const reservation=e.order?.arrival;
     let p=reservation&&dist(e,point)<(e.order.arrivalRadius||0)+65?reservation:point;
-    if(p.footprint&&stopAt>5){p=contactPoint(e,p,Math.max(e.r+.1,stopAt-p.r));stopAt=1;}
+    if(p.footprint&&stopAt>5){
+      const target=p,padding=Math.max(e.r+.1,stopAt-p.r),version=navVersion();
+      if(e.interaction?.target!==target||e.interaction.version!==version||e.interaction.padding!==padding||e.interaction.x!==target.x||e.interaction.y!==target.y){
+        let goal=contactPoint(e,target,padding);
+        if(!openPoint(goal,e.r)){
+          let best=null,cost=Infinity;
+          for(let i=0;i<32;i++){
+            const a=i*Math.PI/16,probe={x:target.x+Math.cos(a)*(target.r+padding+60),y:target.y+Math.sin(a)*(target.r+padding+60)},q=contactPoint(probe,target,padding);
+            if(!openPoint(q,e.r))continue;
+            const score=dist(e,q)+(clear(e,q,e.r)?0:target.r);
+            if(score<cost){cost=score;best=q;}
+          }
+          if(best)goal=best;
+        }
+        e.interaction={target,goal,version,padding,x:target.x,y:target.y};
+      }
+      p=e.interaction.goal;stopAt=1;
+    }
     const d=dist(e,p),tolerance=stopAt+1;
     if(d<=tolerance){e.vx=e.vy=0;e.nav=null;return true;}
     let goal=p;
@@ -41,7 +59,20 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
           if(entry>=0){shared=corridor.slice(entry).map(p=>({...p}));const before=shared[shared.length-2]||e;if(clear(before,goal,e.r))shared[shared.length-1]={...goal};else shared=null;}
         }
         if(shared){e.nav=shared;e.navKey=key;}
-        else if(requests<4){requests++;e.nav=path(e,goal);e.navKey=key;}
+        else if(requests<4){
+          requests++;e.nav=path(e,goal);e.navKey=key;
+          // An open contact point can lie in a sealed pocket between fields.
+          // Select a reachable face instead of retrying that pocket forever.
+          if(!e.nav.length&&e.interaction?.target===point){
+            const target=point,candidates=[];
+            for(let i=0;i<32;i++){
+              const angle=i*Math.PI/16,probe={x:target.x+Math.cos(angle)*(target.r+e.interaction.padding+60),y:target.y+Math.sin(angle)*(target.r+e.interaction.padding+60)},q=contactPoint(probe,target,e.interaction.padding);
+              if(openPoint(q,e.r))candidates.push(q);
+            }
+            candidates.sort((a,b)=>dist(e,a)-dist(e,b));
+            for(const q of candidates){const route=path(e,q);if(route.length){e.interaction.goal=q;e.nav=route;e.navKey=null;return false;}}
+          }
+        }
         else {e.vx=e.vy=0;return false;}
       }
       if(!e.nav?.length){e.vx=e.vy=0;return false;}
@@ -55,7 +86,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     let vx=dx/len*speed,vy=dy/len*speed;
     const ux=vx/speed,uy=vy/speed;
     if(!e.flying)for(const b of neighbors(e)) {
-      if(b===e||b.hp<=0)continue;
+      if(b===e||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(e,b))continue;
       const bx=b.x-e.x,by=b.y-e.y,dd=length(bx,by),gap=e.r+b.r+.5;
       if(dd<.001)continue;
       const forward=bx*ux+by*uy,cross=bx*uy-by*ux;
@@ -106,7 +137,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
   }
   function collision() {
     for(const a of entities())if(!a.building&&!a.loadedIn&&!a.flying&&a.hp>0)for(const b of neighbors(a)) {
-      if(b.id<=a.id||b.hp<=0)continue;
+      if(b.id<=a.id||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(a,b))continue;
       let dx=a.x-b.x,dy=a.y-b.y,d=length(dx,dy),gap=a.r+b.r+.5;
       if(d>=gap)continue;
       if(d<.001){dx=a.id%2?.01:-.01;dy=.007;d=length(dx,dy);}
