@@ -156,10 +156,14 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     const angle=w.turret?e.turretAngle:e.angle,error=Math.abs(Math.atan2(Math.sin(facing-angle),Math.cos(facing-angle)));
     if(error>.12)return true;
     const point=w.point/(e.stim?1.5:1);
-    if(!e.windup&&e.cooldown<=point+1e-8)e.windup={target,remaining:point};
+    // A positive damage point begins on this loop; no earlier elapsed time
+    // belongs to that new phase. Repeat admission includes this creation loop
+    // so delaying its first decrement does not stretch the catalog cooldown.
+    let created=false;
+    if(!e.windup&&e.cooldown<=point+(point>0?dt:0)+1e-8){e.windup={target,remaining:point};created=true;}
     if(e.windup) {
       if(e.windup.target!==target){e.windup=null;return true;}
-      e.windup.remaining-=dt;
+      if(!created||point<=0)e.windup.remaining-=dt;
       if(e.windup.remaining<=1e-8&&e.cooldown<=1e-8) {
         e.windup=null;fire(e,target,w);
       }

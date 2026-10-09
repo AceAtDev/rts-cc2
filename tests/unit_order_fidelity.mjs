@@ -113,7 +113,7 @@ check('Explicit Move suppresses target reacquisition even inside firing range',(
   for(let i=0;i<10;i++)assert.equal(h.step(a),false);assert.equal(b.hp,1000);
 });
 check('An explicit Move cancels backswing without resetting weapon cooldown',()=>{
-  const a=unit(1,500),b=unit(2,600,1),h=make([a,b]);a.order={kind:'attack',target:b};h.step(a);
+  const a=unit(1,500),b=unit(2,600,1),h=make([a,b]);a.order={kind:'attack',target:b};h.step(a);h.step(a);
   const cooldown=a.cooldown;assert(cooldown>0);assert(a.backswing>0);h.combat.cancel(a);
   a.order={kind:'move',x:400,y:500};assert.equal(a.backswing,0);assert.equal(a.cooldown,cooldown);
   assert.equal(h.step(a),false);
