@@ -28,7 +28,7 @@ On later visibility loss, the fallback keeps accepted/started loop metadata and 
 
 The integration refreshes its local order reference after combat returns control. That allows last-seen movement in the same simulation loop rather than one extra stationary loop caused by a stale `const o`.
 
-Automatic acquisition and automatic pursuit now have separate boundaries. An unseen-before enemy still must enter ordinary scan; a visible acquired target can be retained while closing beyond scan-plus-range-slop. Retention uses the current documented vision bound to avoid repeatedly dropping and reacquiring enemies near scan. Hold, Siege and defensive workers still require firing range. This bound is custom, not an imported native leash.
+Automatic acquisition and automatic pursuit now have separate boundaries. An unseen-before enemy still must enter ordinary scan; an acquired target remains eligible while team-visible beyond personal vision distance. The subsequent [idle-anchor pass](idle-anchor-fidelity.md) replaces the earlier personal-vision retention bound with context-specific idle return and attack-move/patrol persistence, supported by native captures. Hold, Siege and defensive workers still require firing range. Exact native leash threshold arithmetic remains unresolved.
 
 Initial equally important candidates are compared by footprint contact distance, matching the footprint geometry used for weapon range. Existing equally important targets stay stable, and an optional explicit `attackTargetPriority` field overrides the supported-unit fallback values. No undocumented threat weighting or low-health focus-fire algorithm is claimed.
 

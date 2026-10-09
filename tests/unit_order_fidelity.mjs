@@ -84,8 +84,9 @@ check('An acquired automatic target remains stable beyond the scan-plus-slop bou
   for(let i=0;i<20;i++){h.step(a);assert.equal(a.combatTarget,b);}
   assert(h.moves.length>=20);
 });
-check('Ordinary automatic pursuit still releases a target beyond its bounded vision policy',()=>{
+check('Visible automatic pursuit retains its target beyond personal vision distance',()=>{
   const a=unit(1,500),b=unit(2,660,1),h=make([a,b]);h.step(a);b.x=800;
+  assert.equal(h.step(a),true);assert.equal(a.combatTarget,b);b.hidden=true;
   assert.equal(h.step(a),false);assert.equal(a.combatTarget,null);
 });
 check('Acquisition scan remains strict for enemies never previously acquired',()=>{

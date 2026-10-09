@@ -4,7 +4,7 @@ import {SIEGE_WEAPON,FASTER,SCALE,turnTowards} from './unit-profiles.js';
 export function createCombat({entities,visible,move,research,shots,clock}) {
   let missiles=[],processedThisLoop=new Set(),idleThisLoop=new Set(),helpThisLoop=new Set();
   // Core CGame defaults; exact native arbitration/phase ordering is separate.
-  const helpRadius=4*SCALE,helpPeriod=2/FASTER;
+  const helpRadius=4*SCALE,helpPeriod=2/FASTER,idleMovementLimit=21*SCALE;
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const weapon=e=>e.sieged?SIEGE_WEAPON:e.weapon||{range:e.range,scan:e.range,minimum:0,period:e.cool,point:.12,backswing:.25,damage:e.damage,turret:true};
   const valid=(e,t,w)=>!!t&&t.hp>0&&(t.team!==e.team||e.order?.kind==='attack'&&e.order.target===t&&t!==e)&&!t.planned&&!t.loadedIn&&!t.insideRefinery&&(!t.flying||w.air)&&visible(e,t);
@@ -13,7 +13,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
   const priority=t=>t.attackTargetPriority??(t.building?(t.damage?20:11):20);
   const armed=t=>!!(t.weapon?.damage??t.damage);
-  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.attackTargetMemory=null;e.attackLastSeen=null;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;idleThisLoop.delete(e);}
+  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.combatAnchor=null;e.combatReturning=false;e.attackTargetMemory=null;e.attackLastSeen=null;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;idleThisLoop.delete(e);}
   function acceptOrder(e) {
     const o=e.order;
     // Capture intent at input acceptance, before a simulation loop can hide it.
@@ -115,17 +115,19 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
       o=e.order={...intent,kind:'attack',target:e.attackTargetMemory};e.attackTargetMemory=null;
     }
     const manual=o?.kind==='attack',defensive=e.acquireLevel==='Defensive'&&!['attackMove','patrol'].includes(o?.kind);
+    const idleAuto=!o&&!e.hold&&!e.sieged&&!e.building&&!defensive;
+    if(idleAuto&&e.combatAnchor&&dist(e,e.combatAnchor)>idleMovementLimit)e.combatReturning=true;
+    let rangeOnly=e.hold||e.sieged||e.building||defensive||idleAuto&&e.combatReturning;
     const newDamage=e.lastDamageAt>(e.lastAcquireResponseAt??-Infinity);
     e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;
     if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;e.combatResponseTarget=null;e.windup=null;e.consumedCombatHelp=e.combatHelp;return false;}
     let target=manual?o.target:e.combatTarget;
     const windupSlop=t=>e.windup?.target===t?(w.rangeSlop||0):0;
     const responseRange=Math.max(w.scan,w.range,e.vision||0);
-    // Scan starts an automatic engagement; it is not a per-tick pursuit cutoff.
-    // Retain visible targets while closing, bounded by our documented vision
-    // policy rather than dropping/reacquiring at the scan boundary.
-    const retentionRange=()=>Math.max(responseRange,Math.max(w.scan,w.range)+(w.rangeSlop||0));
-    if(!valid(e,target,w)||(!manual&&(surface(e,target).distance-e.r>retentionRange(target)||(e.hold||e.sieged||defensive)&&!inRange(e,target,w,windupSlop(target)))))target=null;
+    // Native AttackMove/Patrol retain a team-visible acquired target beyond
+    // personal vision distance. Idle pursuit instead belongs to its origin.
+    if(!valid(e,target,w)||(!manual&&rangeOnly&&!inRange(e,target,w,windupSlop(target))))target=null;
+    if(!target&&e.combatTarget&&idleAuto&&e.combatAnchor){e.combatReturning=true;rangeOnly=true;}
     if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
     // Catalog weapon damage requests Acquire response. Retaliation uses only a
     // visible attacker, bounded by vision; its precise native leash is unknown.
@@ -134,17 +136,17 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     const attacker=e.lastAttacker;
     if(!manual&&newDamage&&(e.response??'Acquire')==='Acquire'&&valid(e,attacker,w)&&
       surface(e,attacker).distance-e.r<=responseRange&&
-      (!(e.hold||e.sieged||defensive)||inRange(e,attacker,w))&&
+      (!rangeOnly||inRange(e,attacker,w))&&
       (!target||priority(attacker)>priority(target))) {
       target=attacker;e.combatResponseTarget=attacker;
     }
-    target=assistance(e,w,o,target,defensive);
+    target=assistance(e,w,o,target,rangeOnly);
     e.acquireTime=(e.acquireTime||0)-dt;
     if(!manual&&(e.acquireTime<=0||!target)) {
       e.acquireTime=.1;
       let best=target;
       for(const t of entities())if(valid(e,t,w)&&surface(e,t).distance-e.r<=Math.max(w.scan,w.range)&&surface(e,t).distance-e.r>=w.minimum) {
-        if((e.hold||e.sieged||defensive)&&!inRange(e,t,w))continue;
+        if(rangeOnly&&!inRange(e,t,w))continue;
         // Keep an equally important target. A newly closer unit never steals
         // an existing valid attack. Threat priority can supersede a structure.
         if(!best||priority(t)>priority(best)||!target&&priority(t)===priority(best)&&surface(e,t).distance<surface(e,best).distance)best=t;
@@ -168,7 +170,18 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     }
     if(manual&&target)e.attackLastSeen={x:target.x,y:target.y};
     e.combatTarget=target;if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
-    if(!target){e.windup=null;if(!o&&!e.hold&&!e.sieged&&Math.hypot(e.vx||0,e.vy||0)<1e-8)idleThisLoop.add(e);return false;}
+    if(target&&idleAuto&&!e.combatAnchor)e.combatAnchor={x:e.x,y:e.y};
+    if(!target){
+      e.windup=null;
+      if(idleAuto&&e.combatReturning&&e.combatAnchor) {
+        // Return interruption is a conservative custom policy: defend inside
+        // weapon range, never begin another distant chase before reaching home.
+        if(dist(e,e.combatAnchor)<=1||move(e,e.combatAnchor,dt,0)) {
+          e.combatAnchor=null;e.combatReturning=false;e.vx=e.vy=0;
+        }else return true;
+      }
+      if(!o&&!e.hold&&!e.sieged&&Math.hypot(e.vx||0,e.vy||0)<1e-8)idleThisLoop.add(e);return false;
+    }
     if(!inRange(e,target,w,windupSlop(target))) {
       e.windup=null;
       // Controlled native assistance assigns a target on the damage loop,
@@ -209,10 +222,11 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
       const w=weapon(e),target=assistance(e,w,null,null,e.acquireLevel==='Defensive');
       if(!target)continue;
       e.combatTarget=target;idleThisLoop.delete(e);reacted.push(e);
+      if(!e.building&&e.acquireLevel!=='Defensive'&&!e.combatAnchor)e.combatAnchor={x:e.x,y:e.y};
       e.vx=e.vy=0;
     }
     helpThisLoop.clear();return reacted;
   }
-  function reset(){missiles=[];processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.lastCombatHelpAt=undefined;}}
+  function reset(){missiles=[];processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatAnchor=null;e.combatReturning=false;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.lastCombatHelpAt=undefined;}}
   return {begin,engage,flushHelp,cancel,acceptOrder,weapon,inRange,reset};
 }
