@@ -9,7 +9,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   // Range is measured between footprints, not the two unit centers.
   const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
   const priority=t=>t.building?(t.damage?20:11):20;
-  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.attackLastSeen=null;e.acquireTime=0;}
+  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.attackLastSeen=null;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;}
   function damage(e,t,w,fraction=1) {
     if(t.hp<=0)return;
     const upgrades=research()[e.team]||{},defense=research()[t.team]||{};
@@ -31,7 +31,10 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
       shots().push({x:e.x,y:e.y,tx:e.x+ux*w.line,ty:e.y+uy*w.line,flame:true,life:.23});
     } else {
       damage(e,t,w);
-      if(w.splash&&!t.building)for(const u of entities())if(u!==t&&u!==e&&u.hp>0&&!u.flying&&!u.loadedIn&&!u.insideRefinery&&!u.planned) {
+      // CrucioShockCannonSwitch selects Blast below a 1.25 catalog radius,
+      // with an explicit lowered-Depot exception; larger targets are Directed.
+      const splashTarget=t.r<1.25*SCALE||(t.type==='relay'&&t.lowered);
+      if(w.splash&&splashTarget)for(const u of entities())if(u!==t&&u!==e&&u.hp>0&&!u.flying&&!u.loadedIn&&!u.insideRefinery&&!u.planned) {
         const band=w.splash.find(([radius])=>dist(u,point)<=radius);
         if(band)damage(e,u,w,band[1]); // Siege splash includes friendly ground units.
       }
@@ -74,10 +77,26 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   function engage(e,dt) {
     if(!e.damage||e.flying||e.transform)return false;
     const w=weapon(e),o=e.order,manual=o?.kind==='attack',defensive=e.acquireLevel==='Defensive'&&!['attackMove','patrol'].includes(o?.kind);
-    if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;return false;}
+    const newDamage=e.lastDamageAt>(e.lastAcquireResponseAt??-Infinity);
+    e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;
+    if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;e.combatResponseTarget=null;e.windup=null;return false;}
     let target=manual?o.target:e.combatTarget;
     const windupSlop=t=>e.windup?.target===t?(w.rangeSlop||0):0;
-    if(!valid(e,target,w)||(!manual&&(surface(e,target).distance-e.r>Math.max(w.scan,w.range)+(w.rangeSlop||0)||(e.hold||e.sieged||defensive)&&!inRange(e,target,w,windupSlop(target)))))target=null;
+    const responseRange=Math.max(w.scan,w.range,e.vision||0);
+    const retentionRange=t=>t===e.combatResponseTarget?responseRange:Math.max(w.scan,w.range)+(w.rangeSlop||0);
+    if(!valid(e,target,w)||(!manual&&(surface(e,target).distance-e.r>retentionRange(target)||(e.hold||e.sieged||defensive)&&!inRange(e,target,w,windupSlop(target)))))target=null;
+    if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
+    // Catalog weapon damage requests Acquire response. Retaliation uses only a
+    // visible attacker, bounded by vision; its precise native leash is unknown.
+    // Existing equally important attacks remain stable. Move/Follow/Flee never
+    // retaliate, and Hold/Siege/Defensive acquisition still requires range.
+    const attacker=e.lastAttacker;
+    if(!manual&&newDamage&&(e.response??'Acquire')==='Acquire'&&valid(e,attacker,w)&&
+      surface(e,attacker).distance-e.r<=responseRange&&
+      (!(e.hold||e.sieged||defensive)||inRange(e,attacker,w))&&
+      (!target||priority(attacker)>priority(target))) {
+      target=attacker;e.combatResponseTarget=attacker;
+    }
     e.acquireTime=(e.acquireTime||0)-dt;
     if(!manual&&(e.acquireTime<=0||!target)) {
       e.acquireTime=.1;
@@ -97,12 +116,13 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
       return false;
     }
     if(manual&&target)e.attackLastSeen={x:target.x,y:target.y};
-    e.combatTarget=target;
+    e.combatTarget=target;if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
     if(!target){e.windup=null;return false;}
     if(!inRange(e,target,w,windupSlop(target))) {
       e.windup=null;
       if(e.backswing>0){e.vx=e.vy=0;return true;}
       if(!e.hold&&!e.sieged&&!e.building)move(e,target,dt,w.range+e.r+target.r-1);
+      else e.vx=e.vy=0;
       return true;
     }
     e.vx=e.vy=0;
