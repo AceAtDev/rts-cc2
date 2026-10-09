@@ -52,11 +52,11 @@ check('Empty Return completes without travel, deposit accounting, or payment',()
   const f=fixture(),e=f.scv();f.issue(e,{kind:'return'});f.workers.update(e,0);
   assert.equal(e.order,null);assert.equal(e.deliveredTrips,undefined);assert.equal(f.moves.length,0);assert.equal(f.payments.length,0);
 });
-check('Gather then queued Return then Move makes one paid trip and promotes movement immediately',()=>{
+check('Gather then queued Return explicitly deposits once before queued Move',()=>{
   const f=fixture(),e=f.scv();f.issue(e,{kind:'mine',node:f.clicked});e.orders.push({kind:'return'},{kind:'move',x:300,y:0});
-  f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime+HARVEST.returnDelay);f.workers.update(e,0);
+  f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime);f.workers.update(e,HARVEST.returnDelay);
   assert.equal(e.order.kind,'return');const movementCount=f.moves.length;f.workers.update(e,0);
-  assert.equal(e.order.kind,'move');assert.equal(e.deliveredTrips,1);assert.equal(f.moves.length,movementCount);assert.deepEqual(f.payments,[[0,-5,0]]);
+  assert.equal(e.order.kind,'move');assert.equal(e.deliveredTrips,1);assert.equal(f.moves.length,movementCount+1);assert.deepEqual(f.payments,[[0,-5,0]]);
 });
 check('Empty Return restores saved Gather without requiring a drop-off to exist',()=>{
   const f=fixture(),e=f.scv();f.all.splice(0,1);f.issue(e,{kind:'return',resume:{kind:'mine',node:f.clicked}});f.workers.update(e,0);

@@ -8,7 +8,7 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
   const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   function release(e){
     const resource=e.harvestResource;if(resource?.harvester===e)resource.harvester=null;
-    e.harvestResource=null;e.insideRefinery=null;e.mineTime=0;
+    e.harvestResource=null;e.insideRefinery=null;e.mineTime=0;e.returnWait=0;
   }
   const load=(n,e)=>entities().filter(w=>w!==e&&w.hp>0&&w.type==='worker'&&w.order?.kind==='mine'&&w.order.node===n).length;
   function patch(e,preferred=null,availableOnly=false){
@@ -20,23 +20,32 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
     return choices.reduce((a,b)=>{const score=n=>distance(n,origin)+Math.max(0,load(n,e)-1)*180+load(n,e)*24;return !a||score(b)<score(a)?b:a;},null);
   }
   function accept(e,order){release(e);if(order.kind==='mine'&&order.node&&order.autoAcquire)order.node=patch(e,order.node);if(['mine','gas'].includes(order.kind)){order.phase=e.carry?'home':'out';e.mineTime=0;}}
-  function finishReturn(e,o){const resume=o.resume,queued=e.orders.length;complete(e);if(!queued&&resume)issue(e,{...resume,phase:'out'});}
+  function finishReturn(e,o){const resume=o.resume,queued=e.orders.length;complete(e);if(!queued&&resume)issue(e,{...resume,phase:'out'});return e.order?'promoted':undefined;}
+  const deferring=e=>e.type==='worker'&&e.order?.phase==='waitReturn'&&e.returnWait>1e-8;
   function deposit(e,home,o){
     e.deliveredTrips=(e.deliveredTrips||0)+1;pay(e.team,e.carryGas?0:-e.carry,e.carryGas?-e.carry:0);e.carry=0;e.carryGas=false;
-    if(o.kind==='return'){finishReturn(e,o);return;}
-    if(e.orders.length){complete(e);return;}
-    o.phase='out';e.nav=null;
+    if(o.kind==='return')return finishReturn(e,o);
+    if(e.orders.length){complete(e);return 'promoted';}
+    o.phase='out';e.nav=null;return 'resumed';
   }
   function update(e,dt){
     const o=e.order;
     // A queued Return may become active after the preceding gather trip has
     // already deposited. It must not create a second empty trip or payment.
-    if(o.kind==='return'&&!e.carry){release(e);finishReturn(e,o);return;}
+    if(o.kind==='return'&&!e.carry){release(e);return finishReturn(e,o);}
     const homes=entities().filter(b=>b.team===e.team&&b.type==='core'&&b.ready&&!b.flying&&b.hp>0);const home=o.kind==='return'&&homes.includes(o.target)?o.target:homes.reduce((a,b)=>!a||distance(e,b)<distance(e,a)?b:a,null);
     if(!home){release(e);complete(e);return;}
     let resource=o.kind==='mine'?o.node:o.target;
+    if(o.phase==='waitReturn'){
+      e.vx=e.vy=0;e.returnWait=Math.max(0,e.returnWait-dt);
+      if(e.returnWait>1e-8)return;
+      // Gather's queued successor starts after the cargo wait, before deposit.
+      // It can therefore deliberately carry minerals into a Move/Build order.
+      if(e.orders.length){complete(e);return 'promoted';}
+      o.phase='home';e.nav=null;
+    }
     if(o.kind==='return'||o.phase==='home'){
-      release(e);if(move(e,home,dt,home.r+e.r+.2))deposit(e,home,o);return;
+      release(e);if(move(e,home,dt,home.r+e.r+.2))return deposit(e,home,o);return;
     }
     // Keep reacquisition local to the depleted field. A distant expansion must
     // not silently replace a finished mineral line merely because it exists.
@@ -47,11 +56,15 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
     if(o.phase==='harvest'){
       if(e.harvestResource!==resource){o.phase='out';return;}
       e.vx=e.vy=0;e.angle=turnTowards(e.angle,Math.atan2(resource.y-e.y,resource.x-e.x),e.turnRate,dt);e.mineTime+=dt;
-      const duration=o.kind==='mine'?HARVEST.mineralTime+HARVEST.returnDelay:HARVEST.gasTime+HARVEST.gasReturnDelay;
+      const duration=o.kind==='mine'?HARVEST.mineralTime:HARVEST.gasTime;
       if(e.mineTime+1e-8>=duration){
         const available=o.kind==='mine'?resource:resource.geyser;
         e.carry=Math.min(o.kind==='mine'?HARVEST.mineralAmount:HARVEST.gasAmount,available.amount);e.carryGas=o.kind==='gas';available.amount-=e.carry;
-        release(e);o.phase='home';e.nav=null;if(available.amount<=0)invalidateNav();
+        // Native SCV earns cargo and releases the field after 45 Faster loops,
+        // then waits eight loops with cargo before beginning mineral return.
+        // Waiting workers can acquire the field during that return delay.
+        release(e);e.returnWait=o.kind==='mine'?HARVEST.returnDelay:HARVEST.gasReturnDelay;
+        o.phase=e.returnWait>0?'waitReturn':'home';e.nav=null;if(available.amount<=0)invalidateNav();
       }
       return;
     }
@@ -59,7 +72,7 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
       if(resource.harvester&&resource.harvester!==e){
         e.vx=e.vy=0;
         if(o.kind==='mine'){
-          const remaining=HARVEST.mineralTime+HARVEST.returnDelay-resource.harvester.mineTime;
+          const remaining=HARVEST.mineralTime-resource.harvester.mineTime;
           if(remaining>.45){const next=patch(e,resource,true);if(next&&next!==resource&&distance(e,next)/e.speed+.15<remaining){o.node=next;e.nav=null;}}
         }
         return;
@@ -69,5 +82,5 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
       if(o.kind==='gas')e.insideRefinery=resource;
     }
   }
-  return{release,accept,update,patch};
+  return{release,accept,update,patch,deferring};
 }

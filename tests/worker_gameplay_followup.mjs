@@ -22,10 +22,11 @@ check('Gas has its own zero return delay; mineral catalog delay is unchanged',()
   assert.equal(HARVEST.mineralTime,2.786/1.4);assert.equal(HARVEST.gasTime,1.981/1.4);
   assert.equal(HARVEST.returnDelay,.5/1.4);assert.equal(HARVEST.gasReturnDelay,0);assert.equal(HARVEST.acquireRadius,280);
 });
-check('Mineral cargo is unavailable before harvest plus mineral return delay',()=>{
+check('Mineral cargo is earned at extraction and held during its distinct return delay',()=>{
   const f=fixture(),e=f.scv();f.issue(e,{kind:'mine',node:f.node});f.workers.update(e,0);
-  f.workers.update(e,HARVEST.mineralTime);assert.equal(e.carry,0);assert.equal(f.node.harvester,e);
-  f.workers.update(e,HARVEST.returnDelay);assert.equal(e.carry,5);assert.equal(e.order.phase,'home');assert.equal(f.node.harvester,null);
+  f.workers.update(e,HARVEST.mineralTime);assert.equal(e.carry,5);assert.equal(f.node.harvester,null);assert.equal(e.order.phase,'waitReturn');
+  f.workers.update(e,HARVEST.returnDelay/2);assert.equal(e.order.phase,'waitReturn');assert.equal(e.carry,5);
+  f.workers.update(e,HARVEST.returnDelay/2);assert.equal(e.carry,0);assert.equal(e.order.phase,'out');
 });
 check('Gas extraction releases cargo at gas HarvestTime without mineral delay',()=>{
   const f=fixture(),e=f.scv();f.issue(e,{kind:'gas',target:f.gas});f.workers.update(e,0);
@@ -56,10 +57,10 @@ check('Workers assigned unfinished gas wait without consuming a resource slot',(
   assert.equal(e.order.kind,'gas');assert.equal(e.order.phase,'out');assert.equal(e.insideRefinery,null);assert.equal(f.gas.harvester,undefined);assert.equal(f.gas.geyser.amount,2250);
   f.gas.ready=true;f.workers.update(e,0);assert.equal(e.insideRefinery,f.gas);
 });
-check('A queued move follows the first deposit rather than another mining cycle',()=>{
+check('A queued Move follows the cargo wait before depositing or starting another mining cycle',()=>{
   const f=fixture(),e=f.scv();f.issue(e,{kind:'mine',node:f.node});e.orders.push({kind:'move',x:200,y:0});
-  f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime+HARVEST.returnDelay);f.workers.update(e,0);
-  assert.equal(e.order.kind,'move');assert.equal(e.carry,0);assert.deepEqual(f.paid,[[0,-5,0]]);assert.equal(e.deliveredTrips,1);
+  f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime);f.workers.update(e,HARVEST.returnDelay);
+  assert.equal(e.order.kind,'move');assert.equal(e.carry,5);assert.deepEqual(f.paid,[]);assert.equal(e.deliveredTrips,undefined);
 });
 check('Explicit Return deposits at its clicked grounded base and resumes mining',()=>{
   const f=fixture(),e=f.scv(),other={...f.core,x:250};f.all.push(other);e.carry=5;
@@ -77,7 +78,7 @@ check('Gathering while carrying first deposits cargo without losing the new dest
 check('A final partial mineral load never overdraws or disappears before deposit',()=>{
   const f=fixture(),e=f.scv();f.node.amount=3;f.issue(e,{kind:'mine',node:f.node});f.workers.update(e,0);
   f.workers.update(e,HARVEST.mineralTime+HARVEST.returnDelay);assert.equal(e.carry,3);assert.equal(f.node.amount,0);assert.equal(f.invalidations,1);
-  f.workers.update(e,0);assert.deepEqual(f.paid,[[0,-3,0]]);f.workers.update(e,0);assert.equal(e.order,null);
+  f.workers.update(e,HARVEST.returnDelay);assert.deepEqual(f.paid,[[0,-3,0]]);f.workers.update(e,0);assert.equal(e.order,null);
 });
 check('A depleted field reassigns within the local acquire radius',()=>{
   const f=fixture(),e=f.scv(),next={x:250,y:0,r:20,amount:900};f.nodes.push(next);f.issue(e,{kind:'mine',node:f.node});f.node.amount=0;

@@ -46,7 +46,7 @@ function assignment(worker){
   if(order?.kind==='return'&&worker.carry>0&&['mine','gas'].includes(order.resume?.kind))return order.resume;
   return null;
 }
-const returning=w=>w.carry>0&&(w.order?.kind==='return'||w.order?.phase==='home');
+const returning=w=>w.carry>0&&(w.order?.kind==='return'||['home','waitReturn'].includes(w.order?.phase));
 const status=(count,ideal)=>({count,ideal,label:`Workers: ${count}/${ideal}`});
 
 // Presentation only: never modifies assignments, harvesting, queues or pathing.

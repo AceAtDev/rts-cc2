@@ -144,7 +144,7 @@ with sync_playwright() as playwright:
         simultaneous=Math.max(simultaneous,g.entities.filter(e=>e.harvestResource===worker.order?.node).length);
         return worker.carry>0;
       },100);
-      const mineralElapsed=g.time-mineralStart, mineralDuration=HARVEST.mineralTime+HARVEST.returnDelay;
+      const mineralElapsed=g.time-mineralStart, mineralDuration=HARVEST.mineralTime;
       check('Mineral harvesting uses Faster real time with at most one tick of quantization',
         reachedMineral.met&&mineralHarvest.met&&worker.carry===5&&
         mineralElapsed>=mineralDuration-1e-8&&mineralElapsed<=mineralDuration+dt+1e-8,
