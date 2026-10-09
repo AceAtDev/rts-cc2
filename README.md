@@ -9,8 +9,8 @@ The world models and movement solver are custom. This is an independent fan prot
 No package install or build step is needed for the game. Serve the static files with Python 3:
 
 ```sh
-git clone https://github.com/AceAtDev/sc2-control-lab.git
-cd sc2-control-lab
+git clone https://github.com/AceAtDev/rts-cc2.git
+cd rts-cc2
 python3 -m http.server 8000 --bind 127.0.0.1 --directory dist
 ```
 
