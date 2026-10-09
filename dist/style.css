@@ -165,8 +165,8 @@ a { color: #a4cb94; }
   .resources strong { font-size: 12px; }
   nav button { min-width: 0; padding: 3px 7px; font-size: 10px; }
   nav small { display: none; }
-  #controlGroups { left: 5px; right: 5px; gap: 3px; }
-  #controlGroups button { width: 25px; height: 24px; }
+  #controlGroups { position: fixed; left: 5px; right: 5px; bottom: calc(max(var(--map), var(--hud)) + 55px); gap: 3px; justify-content: center; }
+  #controlGroups button { flex: 0 0 25px; width: 25px; height: 24px; }
   .multi #roster { grid-template-columns: repeat(4, minmax(0, 1fr)); inset: 3px 3px 19px; gap: 2px; }
   .production { left: 6px; right: 6px; top: 68px; }
   .training .wire-area { width: 100%; }
