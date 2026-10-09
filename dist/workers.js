@@ -14,20 +14,25 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
   function patch(e,preferred=null,availableOnly=false){
     const choices=minerals().filter(n=>n.amount>0&&(!preferred||distance(n,preferred)<=HARVEST.acquireRadius)&&(!availableOnly||!n.harvester||n.harvester===e));
     if(!choices.length)return null;
-    // A clicked field anchors the local resource cluster. Two workers per field
-    // is the catalog ideal, not a forced single-file army formation.
+    // Automatic acquisition searches a local cluster. An explicit Gather
+    // target is preserved by accept() until arrival or resource exhaustion.
     const origin=preferred||e;
     return choices.reduce((a,b)=>{const score=n=>distance(n,origin)+Math.max(0,load(n,e)-1)*180+load(n,e)*24;return !a||score(b)<score(a)?b:a;},null);
   }
-  function accept(e,order){release(e);if(order.kind==='mine'&&order.node)order.node=patch(e,order.node);if(['mine','gas'].includes(order.kind)){order.phase=e.carry?'home':'out';e.mineTime=0;}}
+  function accept(e,order){release(e);if(order.kind==='mine'&&order.node&&order.autoAcquire)order.node=patch(e,order.node);if(['mine','gas'].includes(order.kind)){order.phase=e.carry?'home':'out';e.mineTime=0;}}
+  function finishReturn(e,o){const resume=o.resume,queued=e.orders.length;complete(e);if(!queued&&resume)issue(e,{...resume,phase:'out'});}
   function deposit(e,home,o){
     e.deliveredTrips=(e.deliveredTrips||0)+1;pay(e.team,e.carryGas?0:-e.carry,e.carryGas?-e.carry:0);e.carry=0;e.carryGas=false;
-    if(o.kind==='return'){const resume=o.resume,queued=e.orders.length;complete(e);if(!queued&&resume)issue(e,{...resume,phase:'out'});return;}
+    if(o.kind==='return'){finishReturn(e,o);return;}
     if(e.orders.length){complete(e);return;}
     o.phase='out';e.nav=null;
   }
   function update(e,dt){
-    const o=e.order,homes=entities().filter(b=>b.team===e.team&&b.type==='core'&&b.ready&&!b.flying&&b.hp>0);const home=o.kind==='return'&&homes.includes(o.target)?o.target:homes.reduce((a,b)=>!a||distance(e,b)<distance(e,a)?b:a,null);
+    const o=e.order;
+    // A queued Return may become active after the preceding gather trip has
+    // already deposited. It must not create a second empty trip or payment.
+    if(o.kind==='return'&&!e.carry){release(e);finishReturn(e,o);return;}
+    const homes=entities().filter(b=>b.team===e.team&&b.type==='core'&&b.ready&&!b.flying&&b.hp>0);const home=o.kind==='return'&&homes.includes(o.target)?o.target:homes.reduce((a,b)=>!a||distance(e,b)<distance(e,a)?b:a,null);
     if(!home){release(e);complete(e);return;}
     let resource=o.kind==='mine'?o.node:o.target;
     if(o.kind==='return'||o.phase==='home'){
