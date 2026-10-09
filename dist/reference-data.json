@@ -206,12 +206,13 @@
     "Siege Tank"
   ],
   "movementImplementation": {
-    "simulationHz": 60,
+    "simulationHz": 22.4,
     "rendering": "Interpolated 3D scene with independent turret facing",
     "pathPlanning": "Half-unit cached A* using building contours; command-level shared corridors and bounded incremental fallback searches with round-robin service",
     "localMovement": "Per-unit catalog profiles, compact destination reservations, predictive avoidance, sideways idle yielding, anchored Hold/Siege and collision settling",
-    "workers": "Cargo smart-return and Shift queues, exclusive harvest ownership, unfinished gas waiting, single maintained builder, repair autocast suspends/resumes Patrol",
-    "workerTerrainRadius": ".3125 game units for static routing; separation/weapon radius remains .375"
+    "workers": "Phase-specific gas/mineral timing, bounded depleted-field acquisition, exclusive harvest locks, cargo smart-return/queues, single maintained builder and patrol repair",
+    "workerTerrainRadius": ".3125 game units for static routing; separation/weapon radius remains .375",
+    "scheduling": "Integer loop counter; stable per-loop cohort; retained bounded catch-up and capped interpolation phase; pause/resume clock resets"
   },
   "knownDifferences": [
     "Custom 3D models and terrain rather than the original game assets",
@@ -221,17 +222,20 @@
     "Factory Tank position follows the current editor data; older extracted data uses a different position",
     "Movement and weapon numbers imported for the six implemented units; other stats and all current-patch values are not fully audited",
     "Navigation, arrival reservations, steering, turn integration, targeting priorities, pursuit and attack arcs remain custom policies; not verified identical to SC2",
-    "Weapon randomness, missile acceleration and exact effect conditions are omitted; shots quantize to 60 Hz",
+    "Weapon randomness, missile acceleration and exact effect conditions are omitted; shots quantize to22.4Hz Faster loops",
     "Tank morph times use an older catalog snapshot; full current-patch validation is incomplete",
     "Concussive Shells, Reaper grenade and cliff jumping remain absent",
     "Harvest splitting, automatic flee, peon construction movement, interaction-face search and complete collision flags require comparison with a running SC2 client",
     "Current-patch subgroup ordering is not fully verified; imported priorities use the pinned 2019 catalog",
-    "Native 22.4Hz Faster loops differ from the prototype 60Hz simulation; native traces and human-input captures remain absent",
     "World models, materials, animations, frame art, wireframes, console font and most portraits remain approximations",
     "Actor rigs, joint curves, stride lengths, stage thresholds, transition easing and effect shapes are authored; native M3 clips and human-input traces are absent",
     "Building flight/Depot collision flags still switch instantly despite continuous visual actor transitions; full native ability-section timing remains unimplemented",
     "Mineral capacity-relative quarter boundaries and surface-based nearest-base saturation association are inferred policies; native thresholds/search need measurement",
-    "Native bar-width ratios are used with a custom viewport scale; native projection/offset behavior and bracket-key hold/toggle behavior still need comparison"
+    "Native bar-width ratios are used with a custom viewport scale; native projection/offset behavior and bracket-key hold/toggle behavior still need comparison",
+    "Native fixed Faster loop frequency is imported; internal phase order, seeded randomized unit updates and shot jitter are not reproduced, and native traces remain absent",
+    "Visible-attacker response uses a custom vision-bounded leash; native response memory/acquisition timing needs client comparison",
+    "Opponent economy, scout routes, staging thresholds, Marine/Tank plan and defense decisions are custom fair policy, not Blizzard difficulty scripts",
+    "Control-group cargo, empty-recall and350ms double-tap policies remain unverified; gas-worker command access preserves prototype behavior"
   ],
   "verification": {
     "browser": "Chromium with software WebGL",
@@ -242,23 +246,24 @@
     "placement": "18 catalog geometry/placement cases plus actual snapped ghost",
     "workerControls": "Every starting SCV makes trips, group split, exclusive resource harvesting, collision restoration, gas interruption, queued Hold and construction plans",
     "attackControls": "15 pursuit and attack regressions plus six actual mouse/keyboard command paths",
-    "latestChecks": "229 explicit browser checks across twelve suites, plus snapped ghost and keyboard/mobile assertions; 67 isolated movement, animation and resource-presentation checks",
+    "latestChecks": "306 explicit browser checks across fifteen suites, plus snapped ghost and keyboard/mobile assertions; 188 isolated scheduling, group, worker, combat, opponent, movement, animation and resource-presentation checks",
     "latestStress": {
+      "simulationHz": 22.4,
       "units": 120,
       "commands": 5,
       "steps": 600,
-      "meanMs": 2.078,
-      "p95Ms": 3.3,
-      "worstMs": 21.4,
+      "meanMs": 2.411,
+      "p95Ms": 3.7,
+      "worstMs": 25.2,
       "commandMsRange": [
         1.1,
-        3.4
+        4.2
       ],
       "invalidPositions": 0,
-      "context": "Serial integrated-pass simulation stress; software WebGL. Worst simulation step exceeds a 60 Hz frame; rendered smoothness and native equivalence remain unverified."
+      "context": "Serial native-rate simulation stress with AI disabled; software WebGL. Simulation step budget is44.643ms; these measurements do not verify rendered input latency or native equivalence."
     },
     "gameplayFollowup": "31 regressions including actual Shift+C, cargo destinations, repair/patrol, one builder, gas waiting, supply, F1 and subgroup order",
-    "visualFollowup": "12 integrated checks including desktop/mobile console bounds, perspective camera, complete opening mineral framing, resource mesh reset, actual cargo model click and HUD-aware same-type selection",
+    "visualFollowup": "13 desktop/mobile checks including all ten mobile group slots retaining usable widths",
     "movementFollowup": "10 regressions for enemy anchoring, near-contact yielding, shared-goal start delay, cancellation, fairness, inner radius and enclosed contact cells",
     "presentationFidelity": "24 actual input/render checks: all five camera stops, resolution-independent distance/framing, temporary rotation and screen-relative pan, separate vital palettes, subgroup selection, dashed hover, HUD leave and Engineering Bay geometry",
     "animationIntegration": "11 live checks for sustained harvesting/build facing, scenario actor identity, mineral/gas saturation, hidden flying labels, discrete mineral geometry, direct heading interpolation and real shot telemetry",
@@ -268,11 +273,22 @@
       "buildingAnimation": 11,
       "resourcePresentation": 16,
       "movement": 10
+    },
+    "nativeGameplay": "30 native-rate checks for all six units, mineral/gas trips, production, construction, routing and120-unit crowd movement",
+    "gameplayLoop": "20 live checks for next-loop execution, queued blocked destinations, newborn cohorts, construction damage, structure defeat, finished-loop fog and fair paid opponent economy",
+    "controlGroups": "26 actual keyboard/button checks; positive rapid double-tap uses briefly isolated drawing because software-rendered driver input exceeded the350ms window",
+    "isolatedGameplayChecks": {
+      "gameLoop": 8,
+      "controlGroups": 39,
+      "unitAI": 19,
+      "workerGameplay": 17,
+      "opponentAI": 32,
+      "nativeMovement": 6
     }
   },
   "combatImplementation": {
-    "targeting": "Persistent targets, explicit overrides, range-limited acquisition, Move suppression, both-team vision; defensive idle SCVs, automatic flee and explicit friendly targets",
-    "weapons": "Cancelable windup/recovery, preserved cooldowns, per-hit armor, attribute bonuses, missile travel, flame line, friendly siege splash, minimum range, Reaper burst and regen; one-unit windup range slop"
+    "targeting": "Persistent explicit/acquired targets, visible-attacker Acquire response bounded by vision, Move suppression, Hold anchoring, last-visible fog pursuit and both-team vision",
+    "weapons": "Cancelable windup/recovery, preserved cooldowns, per-hit armor, attribute bonuses, missile travel, flame line, radius-based Siege splash including lowered Depots and friendly units, minimum range, Reaper burst and regen; one-unit windup range slop"
   },
   "buildingPlacement": {
     "grid": "One game unit; integer centers for even footprints, half-unit centers for odd footprints",
@@ -286,5 +302,11 @@
     "console": "Stepped geometry, square command cells, original green SVG wireframes for three types; Oxanium font approximation",
     "actors": "Authored distance-driven split-body articulation; actual shot telemetry; SCV work tools; continuous Tank stabilizers; full-footprint building construction, Depot retraction, actor-timed lift/land, production/extraction activity and damage states",
     "feedback": "Eight-segment dashed hover, solid active/inactive subgroup selection, separate native life/progress/energy palettes, damage-colored original wireframes, independent mineral/gas worker counts, discrete fixed-scale mineral geometry"
+  },
+  "gameplayImplementation": {
+    "construction": "Incremental start-factor HP preserves incoming damage, including add-ons; newborn units receive orders on next cohort update",
+    "defeat": "No surviving actual structures, including incomplete and airborne; planned placement ghosts excluded",
+    "opponent": "Shared cost/prerequisite/placement executors, local mining and gas, supply planning, scouting snapshots, staging, defense and non-reissued attack waves",
+    "controlGroups": "Five operations, physical digit keys, all ten slots, native left/right/Alt-right button actions, stable DOM, death pruning, retained cargo IDs and interruptible gas-worker recall"
   }
 }

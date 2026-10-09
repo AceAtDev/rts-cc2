@@ -51,7 +51,7 @@ describes discrete simulation with interpolated rendered frames. It also
 describes threat/return-fire/assistance priorities before nearest-target
 tie-breaking, plus weapon and update-order randomness. Its
 [environment implementation](https://github.com/google-deepmind/pysc2/blob/master/pysc2/env/sc2_env.py)
-sets Faster realtime loop duration to `1 / 22.4` seconds. The prototype instead
+sets Faster realtime loop duration to `1 / 22.4` seconds. The earlier prototype instead
 uses `1 / 60` simulation steps. Imported per-second numbers do not remove that
 event-timing difference.
 
@@ -175,3 +175,5 @@ These fix reproduced prototype defects. Shared-goal and scheduler regression mea
 The diagnostic figures above record the earlier snapshot. Re-running the scripts uses the current solver; its contact measurements therefore change after the fixes. The fake-path diagnostic retains the legacy synchronous fallback for isolation, while `tests/movement_followup.mjs` exercises the actual incremental planner.
 
 The 2026-10-09 follow-up checks start all 120 same-goal movers across ticks 0–1, with a maximum of 721 expanded nodes in the fixture. Ten isolated movement regressions pass. In a separate 120-unit/600-step browser exercise, mean update time was 2.48 ms, P95 4.5 ms, maximum 67.2 ms, and command acceptance 1.2–6.2 ms; no invalid positions were observed. These measurements use software WebGL and include frame-budget outliers. They do not certify native smoothness. The 1024-node quota bounds A* expansions; projection, walkability-grid generation, connector and corridor checks remain outside that quota.
+
+The gameplay-loop follow-up now schedules the live browser at 22.4 Hz, with retained simulation debt and interpolated rendering. Legacy `update(1/60)` regression helpers still test compatibility at their explicit diagnostic step; `tests/native_loop_gameplay.py` and `tests/native_movement_followup.mjs` exercise 22.4 Hz gameplay. Matching the documented loop scalar does not establish internal phase order, native seeded randomness or input/trajectory parity.

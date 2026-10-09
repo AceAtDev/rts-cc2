@@ -12,7 +12,11 @@ Audit date: 2026-10-09. Initial runtime snapshot: `838431ee42f214ce349f130277606
 
 [DeepMind's environment guide](https://github.com/google-deepmind/pysc2/blob/master/docs/environment.md#game-and-action-speed) describes interpolated intermediate render frames. Its targeting section describes scan range, threats that can return fire, assistance, and nearest-target tie breaking. These are useful explanations from an engine integration project, not an extracted implementation of the native target scorer. Its claim of approximately -1 to +2 loop weapon jitter is secondary evidence; the exact distribution and per-weapon application need native traces or further extracted data.
 
-## Current loop
+## Subsequent integration
+
+The audit below describes its starting snapshot. The current runtime has since moved to 22.4 Hz and implemented the clock, cohort, construction, fog and defeat corrections described in [gameplay-loop-integration.md](gameplay-loop-integration.md). The randomized unit-order finding remains open.
+
+## Audited loop
 
 `game.js` currently runs an authoritative `1/60` second simulation. Imported catalog durations have already been converted from Normal to Faster real seconds, and movement speed/acceleration have already been scaled. Changing the step must **not** apply an additional 1.4 multiplier.
 

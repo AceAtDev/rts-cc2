@@ -27,7 +27,8 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 | A / M / S / H / P | Attack / Move / Stop / Hold Position / Patrol |
 | Shift + command | Append orders and waypoints |
 | Ctrl + 0–9 / Shift + 0–9 | Set / add to a control group |
-| Alt + 0–9 | Set a group and steal its units from other groups |
+| Ctrl+Alt + 0–9 / Alt+Shift + 0–9 | Set-and-steal / append-and-steal group members |
+| Group button: click / right-click / Alt-right-click | Recall / set / set-and-steal |
 | Double-tap a group number | Center the camera on that group |
 | Tab / Shift-Tab | Cycle subgroups while preserving the selection |
 | F1 / Ctrl-F1 / F2 | Idle worker / all idle workers / army |
@@ -44,10 +45,13 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 
 ## Implementation
 
-- A 60 Hz simulation and interpolated Three.js rendering.
+- A documented 22.4 Hz Faster simulation schedule with retained backlog and interpolated Three.js rendering.
 - Radius-aware A* navigation, shared route corridors, cached walkability grids, and bounded incremental fallback searches.
 - Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
-- Persistent combat targets, cancelable attack windup, cooldown preservation, projectiles, Reaper bursts/regeneration, Hellion flame lines, and friendly siege splash.
+- Persistent combat targets, visible-attacker response, explicit Move/Hold preservation, cancelable windup, cooldowns, projectiles, Reaper bursts/regeneration, flame lines, and radius-dependent Siege splash.
+- Physical number-key groups, all ten assignable HUD slots, right-click assignment/stealing, cargo memory, controllable gas harvesters, and interrupted double-tap handling.
+- A paid opponent economy with local harvesting, supply planning, legal construction, scouting, gathering, defense and fog-safe attack orders.
+- Damage-preserving construction and defeat only after the player loses every actual structure.
 - Stepped Terran console with square 5 × 3 command cells, original green selection wireframes, and a locally bundled console font.
 - Perspective camera with catalog field of view, fixed world distance, five distance/pitch stops, and temporary camera rotation.
 - Distance-driven articulated walking, separate work/weapon tracks, shot-driven recoil, Tank stabilizer deployment, and SCV tools.
@@ -61,7 +65,11 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 
 ## Source map
 
-- `dist/game.js`: simulation, orders, selection, controls, economy, and HUD updates.
+- `dist/game.js`: simulation integration, orders, selection, controls, economy, and HUD updates.
+- `dist/game-loop.js`: authoritative Faster schedule, bounded catch-up, interpolation phase and pause/reset.
+- `dist/control-groups.js`: group operations, physical key handling, membership and double-tap tracking.
+- `dist/opponent-ai.js`: fair paid-economy opponent policy and fog-safe squad decisions.
+- `docs/gameplay-loop-integration.md`: gameplay changes, native-rate validation and remaining engine differences.
 - `dist/unit-profiles.js`: extracted movement and weapon numbers with Faster-speed conversion.
 - `dist/movement.js`: route following, crowd steering, destination reservations, and collisions.
 - `dist/geometry.js`, `dist/placement.js`, `dist/navigation.js`: footprints, placement cells, interaction surfaces and static pathing.
@@ -103,6 +111,15 @@ python3 tests/visible_actor_picking.py
 node tests/unit_animation_fidelity.mjs
 node tests/building_animation_fidelity.mjs
 node tests/resource_presentation_fidelity.mjs
+node tests/game_loop_followup.mjs
+node tests/control_groups_followup.mjs
+node tests/unit_ai_followup.mjs
+node tests/worker_gameplay_followup.mjs
+node tests/opponent_ai_followup.mjs
+node tests/native_movement_followup.mjs
+python3 tests/control_groups_input.py
+python3 tests/gameplay_loop_integration.py
+python3 tests/native_loop_gameplay.py
 node tests/movement_followup.mjs
 python3 tests/movement_stress.py
 ```
