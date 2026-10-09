@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {repairAutocastIntent,repairContact} from '../dist/repair-autocast.js';
+let checks=0;const check=(name,fn)=>{fn();checks++;console.log('PASS',name);};
+const worker=(extra={})=>({type:'worker',id:1,team:0,x:0,y:0,r:10.5,hp:45,ready:true,mechanical:true,repairAuto:true,order:null,...extra});
+const tank=(extra={})=>({type:'tank',id:2,team:0,x:140,y:0,r:24.5,hp:100,maxhp:175,ready:true,mechanical:true,...extra});
+check('Idle repair saves the acquisition anchor as a return Move',()=>{const w=worker(),t=tank(),o=repairAutocastIntent(w,[w,t]);assert.equal(o.target,t);assert.deepEqual(o.resume,{kind:'move',x:0,y:0,repairReturn:true});});
+check('Patrol repair retains the route and its current leg',()=>{const route={kind:'patrol',x:200,y:0,origin:{x:0,y:0},out:false},w=worker({order:route}),o=repairAutocastIntent(w,[w,tank()]);assert.deepEqual(o.resume,route);assert.notEqual(o.resume,route);});
+check('Move, Attack and resource jobs suppress automatic repair',()=>{for(const kind of ['move','attack','mine','gas','build','board']){const w=worker({order:{kind}});assert.equal(repairAutocastIntent(w,[w,tank()]),null);}});
+check('Held workers cannot acquire distant repair targets',()=>{const w=worker({hold:true});assert.equal(repairAutocastIntent(w,[w,tank()]),null);});
+check('Contact autocast retains Hold instead of creating a chase or return Move',()=>{const w=worker({hold:true}),t=tank({x:35}),o=repairAutocastIntent(w,[w,t]);assert.ok(repairContact(w,t));assert.equal(o.resumeHold,true);assert.equal(o.resume,null);});
+check('Enemy, biological, self, unfinished, dead and cargo targets are excluded',()=>{const w=worker({hp:20,maxhp:45});for(const extra of [{team:1},{mechanical:false},{ready:false},{hp:0},{loadedIn:{}},{insideRefinery:{}}])assert.equal(repairAutocastIntent(w,[w,tank(extra)]),null);assert.equal(repairAutocastIntent(w,[w]),null);});
+check('Insufficient funds block acquisition without mutating target or worker',()=>{const w=worker(),t=tank();assert.equal(repairAutocastIntent(w,[w,t],{affordable:()=>false}),null);assert.equal(w.order,null);assert.equal(t.hp,100);});
+check('Search is bounded and nearest eligible target wins',()=>{const w=worker(),near=tank({id:3,x:100}),far=tank();assert.equal(repairAutocastIntent(w,[far,near,w]).target,near);assert.equal(repairAutocastIntent(w,[w,tank({x:400})]),null);});
+check('Disabled, dead and hidden workers cannot acquire repair',()=>{for(const extra of [{repairAuto:false},{hp:0},{loadedIn:{}},{insideRefinery:{}}]){const w=worker(extra);assert.equal(repairAutocastIntent(w,[w,tank()]),null);}});
+console.log(`${checks} repair autocast checks passed`);

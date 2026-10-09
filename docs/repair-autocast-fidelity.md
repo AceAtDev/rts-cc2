@@ -1,0 +1,15 @@
+# Repair contexts and resource exhaustion
+
+Repair autocast now considers idle, Patrol and Hold-position SCVs. It preserves the worker's interrupted context: an idle worker returns to its starting point after repairing, a patrolling worker resumes its route, and a held worker repairs only at contact without moving. Explicit Move, Attack and economic jobs suppress automatic repair acquisition. Candidates must be friendly, alive, completed, damaged mechanical units or structures, with resources available for a repair increment.
+
+Native **4.10.0.75689** two-Participant trials distinguish these contexts. Idle autocast approached a target five game units away and retained a return Move. Patrol retained Patrol behind Repair. Hold at five game units did not approach or heal; Hold at 1.2 game units repaired in place and retained Hold. The catalog search is seven game units. Nearest-candidate ordering and the local 1.2-world-unit contact tolerance are prototype policies, not measured native tie-breaking or exact contact geometry.
+
+Manual Repair without funds is rejected before replacing orders. Smart-clicking a damaged mechanical ally without funds instead produces Follow, matching the measured native Move/Follow fallback. Repair ends when resources are exhausted and promotes its saved context or queued successor. A manual Repair does not silently resume when money later returns. Enabled autocast can reacquire after funds return if the restored context permits it.
+
+Hold followed by a queued Move is not a permanent barrier. Native Hold promotes its queued Move on the next loop; a held automatic Repair first completes Repair, then restores Hold, then promotes the queued Move. Host completion clears the held flag when the Move takes over. Automatic Repair also counts its implicit return Move/Hold/Patrol against the thirty-two-order limit.
+
+`dist/repair-autocast.js` chooses automatic intent without mutation. Host integration owns affordability, repaired-HP clamping, resource charges, movement, context restoration and queue transitions. Repair costs continue to use original unit/structure costs and build time through `dist/repair.js`, never charging beyond the actual missing health.
+
+`node tests/repair_autocast_fidelity.mjs` passes 9 checks, alongside 9 repair-quote checks. The 49-check remaining-details browser suite covers stationary Hold repair, idle return, Patrol preservation, Move suppression, insufficient funds, resource exhaustion, manual versus automatic restart, Smart fallback and a queued Move after held repair.
+
+Sources: [Blizzard basic unit controls](https://news.blizzard.com/en-us/article/4552956/game-guide-basic-unit-controls), [pinned Terran Repair ability data](https://github.com/Talv/sc2-data/blob/1921f856b0443d4cbd366c472cd7984fa6a224d1/mods/liberty.sc2mod/base.sc2data/GameData/AbilData.xml), and [native protocol](https://github.com/Blizzard/s2client-proto/blob/master/s2clientprotocol/raw.proto). Historical native comparisons establish the transitions above; they do not certify every modern-client variation.
