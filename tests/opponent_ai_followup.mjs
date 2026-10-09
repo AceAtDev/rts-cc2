@@ -1,0 +1,59 @@
+import assert from 'node:assert/strict';
+import {createOpponentAI} from '../dist/opponent-ai.js';
+
+let passed=0;
+function test(name,fn){fn();passed++;console.log(`PASS ${name}`);}
+function fixture({workers=12,minerals=8,army=0,cash=0}={}){
+  let now=0,id=1,credits={minerals:cash,gas:0},seen=new Set(),seenPoints=new Set();
+  const defs={relay:{cost:100,gas:0,cap:8},barracks:{cost:150,requires:'relay'},refinery:{cost:75},factory:{cost:150,gas:100,requires:'barracks'},worker:{cost:50,supply:1},marine:{cost:50,supply:1},tank:{cost:150,gas:125,supply:3},techlab:{cost:50,gas:25}};
+  const make=(type,x=1700,y=300,extra={})=>({id:id++,type,team:1,x,y,hp:100,ready:true,queue:[],orders:[],order:null,building:['core','relay','barracks','factory','refinery'].includes(type),...extra});
+  const base=make('core',1700,300,{cap:15}),units=[base],fields=Array.from({length:minerals},(_,i)=>({x:1660+i*15,y:130,amount:1000})),foreign={x:500,y:1200,amount:1000},geyser={x:1570,y:280,amount:2000};
+  fields.push(foreign);for(let i=0;i<workers;i++)units.push(make('worker',1710+i,350,{supply:1,order:{kind:'mine',node:fields[i%Math.max(1,minerals)],phase:'out'}}));
+  for(let i=0;i<army;i++)units.push(make('marine',1700,300,{supply:1}));
+  const calls={orders:[],builds:[],trains:[],addons:[],placements:[]};
+  let valid=()=>true,addonCells=()=>[];
+  const issue=(e,o)=>{calls.orders.push({id:e.id,order:{...o}});e.order={...o};};
+  const pay=d=>{if(credits.minerals<d.cost||credits.gas<(d.gas||0))return false;credits.minerals-=d.cost;credits.gas-=d.gas||0;return true;};
+  const ai=createOpponentAI({team:1,defs,entities:()=>units,minerals:()=>fields,geysers:()=>[geyser],clock:()=>now,
+    visible:(_,e)=>seen.has(e.id)||seenPoints.has(`${e.x},${e.y}`),wallet:()=>credits,
+    used:()=>units.filter(e=>e.team===1&&e.hp>0).reduce((s,e)=>s+(e.supply||0),0),capacity:()=>Math.min(200,units.filter(e=>e.team===1&&e.hp>0&&e.ready).reduce((s,e)=>s+(e.cap||0),0)),
+    placement:(type,p)=>{calls.placements.push({type,...p});return{...p,valid:valid(type,p),addonCells:addonCells(type,p)};},
+    build:(type,p)=>{calls.builds.push({type,...p});const d=defs[type];if(d.requires&&!units.some(e=>e.type===d.requires&&e.ready&&e.team===1)||!pay(d))return false;const b=make(type,p.x,p.y,{ready:false,cap:d.cap,geyser:type==='refinery'?geyser:undefined});units.push(b);return b;},
+    train:(type,b)=>{calls.trains.push({type,id:b.id});if(!pay(defs[type]))return false;b.queue.push({type,started:true});return true;},
+    addon:(b,type)=>{calls.addons.push({id:b.id,type});if(!pay(defs[type]))return false;b.addon={type,ready:false};return b.addon;},issue,world:{w:2100,h:1400}});
+  return {ai,units,fields,foreign,geyser,base,calls,make,seen,seenPoints,credits,issue,advance:t=>{now=t;ai.update();},valid:fn=>{valid=fn;},addonCells:fn=>{addonCells=fn;},worker:()=>units.find(e=>e.type==='worker'),army:()=>units.filter(e=>!e.building&&e.type!=='worker'&&e.team===1)};
+}
+
+test('Idle workers use own local fields even when foreign fields are closer',()=>{const f=fixture();const w=f.worker();w.x=500;w.y=1200;w.order=null;f.advance(1);assert.notEqual(w.order.node,f.foreign);});
+test('AI fixes a foreign-cluster mineral assignment',()=>{const f=fixture();f.worker().order.node=f.foreign;f.advance(1);assert.notEqual(f.worker().order.node,f.foreign);});
+test('No local minerals does not send idle workers across the map',()=>{const f=fixture({minerals:0});f.worker().order=null;f.advance(1);assert.equal(f.worker().order,null);assert.equal(f.base.rally,null);});
+test('Command Center worker rally remains local',()=>{const f=fixture();f.advance(1);assert.equal(f.base.rally.kind,'mine');assert.notEqual(f.base.rally.node,f.foreign);});
+test('Healthy local mining orders are preserved',()=>{const f=fixture();const o=f.worker().order;f.advance(1);assert.equal(f.worker().order,o);assert.equal(f.calls.orders.length,0);});
+test('Returning gas workers count toward the three worker target',()=>{const f=fixture();const r=f.make('refinery',1570,280,{geyser:f.geyser});f.units.push(r);const workers=f.units.filter(e=>e.type==='worker');for(const w of workers.slice(0,3))w.order={kind:'return',resume:{kind:'gas',target:r}};f.advance(1);assert.equal(f.calls.orders.filter(c=>c.order.kind==='gas').length,0);});
+test('A Refinery receives exactly three gas assignments',()=>{const f=fixture();const r=f.make('refinery',1570,280,{geyser:f.geyser});f.units.push(r);f.advance(1);assert.equal(f.calls.orders.filter(c=>c.order.kind==='gas').length,3);f.advance(2);assert.equal(f.calls.orders.filter(c=>c.order.kind==='gas').length,3);});
+test('Gas depletion resumes local mineral gathering',()=>{const f=fixture();const r=f.make('refinery',1570,280,{geyser:f.geyser});f.units.push(r);f.worker().order={kind:'gas',target:r};f.geyser.amount=0;f.advance(1);assert.equal(f.worker().order.kind,'mine');});
+test('Worker production stops at two workers per live patch',()=>{const f=fixture({workers:16,cash:1000});f.advance(1);assert.equal(f.calls.trains.filter(c=>c.type==='worker').length,0);});
+test('A completed gas refinery increases the worker target by three',()=>{const f=fixture({workers:16,cash:1000});f.units.push(f.make('refinery',1570,280,{geyser:f.geyser}),f.make('relay',1900,300,{cap:8}));f.advance(1);assert.equal(f.calls.trains.filter(c=>c.type==='worker').length,1);});
+test('Supply is proposed before the queue becomes blocked',()=>{const f=fixture({cash:100});f.advance(1);assert.equal(f.calls.builds[0].type,'relay');assert.equal(f.credits.minerals,0);});
+test('Pending Depots prevent duplicate supply construction',()=>{const f=fixture({cash:100});f.units.push(f.make('relay',1900,300,{ready:false,cap:8}));f.advance(1);assert.equal(f.calls.builds.filter(c=>c.type==='relay').length,0);});
+test('Unstarted queued supply triggers proactive Depot planning',()=>{const f=fixture({workers:8,cash:100});f.base.queue=[{type:'tank',started:false},{type:'tank',started:false}];f.advance(1);assert.equal(f.calls.builds[0].type,'relay');});
+test('Invalid placement never reaches build or spends funds',()=>{const f=fixture({workers:16,cash:100});f.valid(()=>false);f.advance(1);assert.equal(f.calls.builds.length,0);assert.equal(f.credits.minerals,100);assert.equal(f.calls.placements.length,49);});
+test('A rejected prerequisite does not create a Barracks or spend resources',()=>{const f=fixture({workers:0,minerals:0,cash:150});f.advance(1);assert.equal(f.calls.builds.some(c=>c.type==='barracks'),true);assert.equal(f.units.some(e=>e.type==='barracks'),false);assert.equal(f.credits.minerals,150);});
+test('Unaffordable construction does not scan the placement grid',()=>{const f=fixture();f.advance(200);assert.equal(f.calls.placements.length,0);});
+test('Producer placement reserves the future add-on footprint',()=>{const f=fixture({workers:0,minerals:0,cash:150});f.units.push(f.make('relay',1800,300,{cap:8}));f.addonCells(type=>type==='barracks'?[{valid:false}]:[]);f.advance(1);assert.equal(f.calls.builds.length,0);assert.equal(f.credits.minerals,150);assert.equal(f.calls.placements.length,49);});
+test('Producer training cannot create a unit without paid resources',()=>{const f=fixture();const b=f.make('barracks');f.units.push(b);f.advance(1);assert.equal(b.queue.length,0);assert.equal(f.calls.trains.some(c=>c.type==='marine'),true);assert.equal(f.units.filter(e=>e.type==='marine').length,0);});
+test('Tank production requires a completed attached Tech Lab',()=>{const f=fixture({cash:500});f.credits.gas=500;const factory=f.make('factory',1600,550,{addon:{type:'techlab',ready:false}});f.units.push(factory);f.advance(1);assert.equal(f.calls.trains.some(c=>c.type==='tank'),false);factory.addon.ready=true;f.advance(2);assert.equal(f.calls.trains.some(c=>c.type==='tank'),true);});
+test('Hidden enemy coordinates are never remembered or targeted',()=>{const f=fixture({army:9});const enemy=f.make('core',500,1000,{team:0});f.units.push(enemy);f.advance(1);assert.deepEqual(f.ai.state().knownEnemies,[]);assert.equal(f.ai.state().waveSize,0);});
+test('Scouting uses fixed-map knowledge and regular attack-move',()=>{const f=fixture({army:3});f.advance(1);const id=f.ai.state().scoutId;const call=f.calls.orders.find(c=>c.id===id);assert.deepEqual(call.order,{kind:'attackMove',x:400,y:1100});});
+test('Seen enemies produce coordinate snapshots, not live entity references',()=>{const f=fixture();const enemy=f.make('core',500,1000,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);f.seen.clear();enemy.x=800;enemy.y=800;f.advance(2);assert.equal(f.ai.state().knownEnemies[0].x,500);});
+test('Hidden dead buildings remain remembered until the location is observed',()=>{const f=fixture();const enemy=f.make('core',500,1000,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);f.seen.clear();enemy.hp=0;f.advance(2);assert.equal(f.ai.state().knownEnemies.length,1);f.seenPoints.add('500,1000');f.advance(3);assert.equal(f.ai.state().knownEnemies.length,0);});
+test('Mobile enemy memory expires without fresh vision',()=>{const f=fixture();const enemy=f.make('marine',500,1000,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);f.seen.clear();f.advance(14);assert.equal(f.ai.state().knownEnemies.length,0);});
+test('A visible nearby hostile squad triggers defense',()=>{const f=fixture({army:5});const enemy=f.make('marine',1600,350,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);assert.equal(f.ai.state().mode,'defend');assert.equal(f.calls.orders.length,5);assert.ok(f.calls.orders.every(c=>c.order.kind==='attackMove'&&c.order.x===1600));});
+test('A hidden nearby hostile squad does not trigger omniscient defense',()=>{const f=fixture({army:5});f.units.push(f.make('marine',1600,350,{team:0}));f.advance(1);assert.notEqual(f.ai.state().mode,'defend');});
+test('Unchanged defense goals preserve acquisition and weapon orders',()=>{const f=fixture({army:5});const enemy=f.make('marine',1600,350,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);const count=f.calls.orders.length;f.advance(2);assert.equal(f.calls.orders.length,count);});
+test('A squad must gather before starting an attack wave',()=>{const f=fixture({army:8});const enemy=f.make('core',500,1000,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);assert.equal(f.ai.state().waveSize,0);for(const e of f.army()){e.x=e.order.x;e.y=e.order.y;e.order=null;}f.advance(2);assert.equal(f.ai.state().waveSize,8);assert.equal(f.ai.state().mode,'attack');});
+test('Active attack waves are not reissued every policy tick',()=>{const f=fixture({army:8});const enemy=f.make('core',500,1000,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);for(const e of f.army()){e.x=e.order.x;e.y=e.order.y;e.order=null;}f.advance(2);const count=f.calls.orders.length;f.advance(3);assert.equal(f.calls.orders.length,count);});
+test('New reinforcements gather instead of streaming into an existing wave',()=>{const f=fixture({army:8});const enemy=f.make('core',500,1000,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);for(const e of f.army()){e.x=e.order.x;e.y=e.order.y;e.order=null;}f.advance(2);const extra=f.make('marine');f.units.push(extra);f.advance(3);assert.notEqual(extra.order.x,500);assert.equal(f.ai.state().waveSize,8);});
+test('Producer rallies share the army gathering point',()=>{const f=fixture();const b=f.make('barracks'),factory=f.make('factory');f.units.push(b,factory);f.advance(1);assert.deepEqual(b.rally,factory.rally);assert.equal(b.rally.kind,'move');});
+test('Reset clears scouting, fog memories and squad policy',()=>{const f=fixture({army:3});const enemy=f.make('core',500,1000,{team:0});f.units.push(enemy);f.seen.add(enemy.id);f.advance(1);f.ai.reset();assert.deepEqual(f.ai.state(),{mode:'gather',knownEnemies:[],waveSize:0,scoutId:null});});
+console.log(`${passed} opponent AI checks passed`);

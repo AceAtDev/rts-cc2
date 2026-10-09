@@ -1,0 +1,35 @@
+# Opponent economy and squad policy
+
+This follow-up replaces the fixed build coordinates and omniscient attack target in the prototype opponent. It uses the same paid construction, production, worker orders and combat acquisition as the player. The policy is written for this two-spawn map and six-unit Terran subset. It does not reproduce Blizzard's internal skirmish AI scripts or a native difficulty level.
+
+## Gameplay evidence
+
+Primary Blizzard guides were fetched on 2026-10-09:
+
+- [Economy](https://news.blizzard.com/en-us/article/4488313/game-guide-economy) describes continuous worker production, two workers per mineral patch, three per geyser, and protecting income. These are the worker targets; they are not claims that a third mineral worker never adds income.
+- [Basic Unit Controls](https://news.blizzard.com/en-us/article/4552956/game-guide-basic-unit-controls) defines attack-move as traveling to a point and engaging encountered enemies. The opponent issues that ordinary order and leaves targeting, pursuit, windup, cooldown and missiles to the shared combat implementation.
+- [Special Control](https://news.blizzard.com/en-us/article/4552955/game-guide-special-control) explains common rally points for groups of production buildings and queued construction followed by mineral gathering. Producers rally to a gathering point rather than immediately streaming each new unit to the opposing base.
+- [Scouting](https://news.blizzard.com/en-us/article/4488316/game-guide-scouting) emphasizes gathering enemy information before responding. Enemy observations are gated through the opponent's visibility grid and stored as coordinate snapshots, not live entity references.
+- [Attacking](https://news.blizzard.com/en-us/article/4488318/game-guide-attacking) recommends scouting before the main army commits. This motivates a scouting/gathering phase; the specific wave algorithm below is custom.
+
+## Concrete changes
+
+Idle workers and displaced resource assignments stay in the resource cluster of a completed grounded own Command Center. The policy does not choose the nearest mineral from the entire map. Local clusters use a custom 14-game-unit distance limit. Local fields are balanced by current assignments, while existing healthy mining is preserved. A Refinery receives three workers, including hidden harvesters and workers on explicit cargo-return orders with a gas resume. Empty gas and exhausted mineral assignments resume available local mineral gathering. Worker production targets two per live local patch plus three per completed local Refinery.
+
+Supply planning accounts for started unit supply, unstarted queued supply and pending Depots. It attempts a Depot before the remaining headroom falls below a small production-dependent reserve. Construction proposals search at most 49 nearby candidates every two seconds per structure type. The same placement validator must accept every footprint, and Barracks/Factory locations must also leave their previewed future add-on cells clear. Funds, prerequisites, worker availability and final placement remain mandatory checks in the injected build callback before payment and spawning.
+
+Production buildings share a gathering rally. A scout uses this map's known opposite starting location; it never reads a hidden enemy Command Center's current coordinates. Enemy structures remain remembered at their last observed position until the position is revisited and found empty. Mobile enemy snapshots expire after twelve seconds. Hidden movement or death does not update a remembered structure. Production remains a basic paid Marine/Tank plan, with a completed attached Factory Tech Lab required for Tanks.
+
+The force gathers near its own base before an eight-unit wave starts. At least three quarters of its members must reach the staging region. A launched wave retains its membership; new units gather for a later wave. Visible hostile combat units near an own base trigger defense. The policy does not issue automatic stutter-step commands, focus-fire hidden targets, supply resources, spawn units or modify weapon cooldowns. An unchanged goal preserves existing acquisition and attack orders instead of resetting combat every policy tick.
+
+The local distance limit, staging geometry, army threshold, 75% quorum, 45-second wave spacing, six-second defense grace, twenty-second scouting cadence, twelve-second mobile memory and 70/120-second tech timing are custom strategy choices. These are deliberately separated from the documented resource and command mechanics. This pass does not add expansion play, opponent research, native build-order scripts, adaptive race matchups, tactical spell use or a full tech tree.
+
+## Integration API
+
+`createOpponentAI` takes `team`, `defs`, getters for `entities`, `minerals`, `geysers`, and `clock`, plus `world`. Injected `visible(team, target)`, `wallet(team)`, `used(team)`, `capacity(team)`, and `placement(type, point)` provide ordinary game state. `placement` returns the shared preview including `valid`, coordinates and `addonCells`. `build(type, preview)`, `train(type, producer)`, `addon(producer, type)` and `issue(unit, order)` call the existing paid game operations. Build and add-on callbacks must use team-specific visibility, not player fog. No callback may bypass prerequisites or pay after spawning.
+
+The returned `update()` is intended for the existing 0.8-second decision cadence. `reset()` clears observations and squad state between matches. `state()` returns debug snapshots, mode, scout identifier and wave membership size. New units still update at the shared simulation cadence; this slower policy interval does not change movement or combat timing.
+
+## Verification
+
+Run `node tests/opponent_ai_followup.mjs`. The isolated fixtures check local economy, return-trip gas accounting, dynamic worker targets, pending/queued supply, failed costs and prerequisites, bounded placement, future add-on space, paid production, Tech Lab gating, fog snapshots, fair scouting, defensive orders, staged attacks, reinforcements and unchanged-order preservation. They establish behavior of this policy and its callback contract. Browser integration remains necessary to check actual paid placement, harvesting and production in the game; these self-tests do not establish native-client equivalence.
