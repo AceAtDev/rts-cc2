@@ -38,6 +38,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     }
   }
   function fire(e,t,w) {
+    e.visualShotSerial=(e.visualShotSerial||0)+1;e.visualShotAt=clock();
     e.cooldown=w.period/(e.stim?1.5:1);e.backswing=w.backswing/(e.stim?1.5:1);
     const point={x:t.x,y:t.y};
     if(w.missileSpeed)missiles.push({source:e,target:t,weapon:w,x:e.x,y:e.y});
@@ -53,6 +54,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
         const b=e.burst;b.time-=dt;
         if(b.time<=0) {
           if(valid(e,b.target,b.weapon)&&inRange(e,b.target,b.weapon,SCALE)) {
+            e.visualShotSerial=(e.visualShotSerial||0)+1;e.visualShotAt=clock();
             impact(e,b.target,b.weapon,{x:b.target.x,y:b.target.y});
             shots().push({x:e.x,y:e.y,tx:b.target.x,ty:b.target.y,life:.12});
           }

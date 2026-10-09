@@ -39,7 +39,7 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
     if(resource.harvester&&(resource.harvester.hp<=0||resource.harvester.harvestResource!==resource))resource.harvester=null;
     if(o.phase==='harvest'){
       if(e.harvestResource!==resource){o.phase='out';return;}
-      e.vx=e.vy=0;e.mineTime+=dt;
+      e.vx=e.vy=0;e.angle=turnTowards(e.angle,Math.atan2(resource.y-e.y,resource.x-e.x),e.turnRate,dt);e.mineTime+=dt;
       if(e.mineTime+1e-8>=((o.kind==='mine'?HARVEST.mineralTime:HARVEST.gasTime)+HARVEST.returnDelay)){
         const available=o.kind==='mine'?resource:resource.geyser;
         e.carry=Math.min(o.kind==='mine'?HARVEST.mineralAmount:HARVEST.gasAmount,available.amount);e.carryGas=o.kind==='gas';available.amount-=e.carry;

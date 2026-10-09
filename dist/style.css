@@ -217,3 +217,19 @@ a { color: #a4cb94; }
 #unitWire[style*="btn-unit-terran-marine"] { background-image: url('assets/hud/wire-marine.svg') !important; filter: none; }
 @font-face { font-family: TerranConsole; src: url('assets/hud/oxanium.ttf') format('truetype'); font-weight: 200 800; font-style: normal; font-display: swap; }
 nav button, .resources strong, .vitals h2, #clock, #healthText, #unitKills, #unitRank { font-family: TerranConsole, Arial, sans-serif; }
+
+/* Native vital palette for damaged selection wireframes. */
+#unitWire[data-vital="0"] { filter: hue-rotate(240deg) saturate(1.1) !important; }
+#unitWire[data-vital="1"] { filter: hue-rotate(270deg) saturate(1.1) !important; }
+#unitWire[data-vital="2"] { filter: hue-rotate(310deg) saturate(1.1) !important; }
+/* Color original wireframe alpha directly with the catalog vital palette. */
+#unitWire { position: relative; }
+#unitWire[style*="btn-building-terran-commandcenter"],
+#unitWire[style*="btn-building-terran-orbitalcommand"],
+#unitWire[style*="btn-unit-terran-scv"],
+#unitWire[style*="btn-unit-terran-marine"] { background-image: none !important; filter: none !important; }
+#unitWire::after { content: ''; display: none; position: absolute; inset: 0; background: var(--wire-color, #00ff00); mask-size: contain; mask-position: center; mask-repeat: no-repeat; }
+#unitWire[style*="btn-building-terran-commandcenter"]::after,
+#unitWire[style*="btn-building-terran-orbitalcommand"]::after { display: block; mask-image: url('assets/hud/wire-commandcenter.svg'); }
+#unitWire[style*="btn-unit-terran-scv"]::after { display: block; mask-image: url('assets/hud/wire-scv.svg'); }
+#unitWire[style*="btn-unit-terran-marine"]::after { display: block; mask-image: url('assets/hud/wire-marine.svg'); }
