@@ -46,7 +46,7 @@ function card(e,menu){if(!e)return Array(15).fill(null);let c=common();if(e.team
  if(!e.ready)return put([[8,'builder'],[14,'cancel']]);
  if(menu==='basic'&&e.type==='worker')return put([[0,'core'],[1,'refinery'],[2,'relay'],[5,'barracks'],[6,'engineering'],[10,'bunker'],[11,'missileturret'],[12,'sensordome'],[14,'cancel']]);
  if(menu==='advanced'&&e.type==='worker')return put([[0,'ghostacademy'],[5,'factory'],[6,'armory'],[10,'starport'],[11,'fusioncore'],[14,'cancel']]);
- if(e.flying){c[4]=null;c[13]='land';if(e.type!=='core'){c[10]='techlab';c[11]='reactor'}return c}
+ if(e.flying){if(e.type==='core'&&!e.morph){c[10]='load';if(e.loaded?.length)c[11]='unload';}c[4]=null;c[13]='land';if(e.type!=='core'){c[10]='techlab';c[11]='reactor'}return c}
  if(e.type==='worker'){c[5]='gather';if(e.carry)c[6]='cargo';c[10]='basic';c[11]='advanced';c[12]='repair';if(e.order?.kind==='build')c[14]='halt';return c}
  if(e.type==='marine'||e.type==='marauder'){c[10]='stim';return c}
  if(e.type==='tank')return e.sieged?put([[1,'stop'],[4,'attack'],[11,'unsiege']]):(c[10]='siege',c);

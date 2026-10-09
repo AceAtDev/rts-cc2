@@ -3,9 +3,9 @@
 export const CONTROL_GROUP_OPERATIONS=Object.freeze(['recall','set','append','setAndSteal','appendAndSteal']);
 const validDigit=digit=>/^[0-9]$/.test(String(digit));
 const liveOwned=(unit,team)=>unit&&unit.team===team&&unit.hp>0&&!unit.planned;
-// Refinery harvesting hides the actor, but its worker order can still be interrupted.
-// Preserve that established control path; only transport cargo is inaccessible here.
-const selectable=unit=>!unit.loadedIn;
+// Keep remembered IDs while gas extraction or transport makes a worker
+// inaccessible. Recall/assignment resumes when its actor becomes controllable.
+const selectable=unit=>!unit.loadedIn&&!unit.insideRefinery;
 
 export function controlGroupDigit(event){
   // event.key is "!" for Shift+1 on a US keyboard. The physical digit survives modifiers.

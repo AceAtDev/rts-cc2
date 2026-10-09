@@ -238,3 +238,10 @@ nav button, .resources strong, .vitals h2, #clock, #healthText, #unitKills, #uni
 #controlGroups button.empty-group { background: #07100ccc; border-color: #394a40; box-shadow: inset 0 0 0 1px #263a31; }
 #controlGroups button.selected-group { border-color: #9dde83; }
 #controlGroups img[hidden] { display: none; }
+
+#cargo { position:absolute; left:34%; right:12px; bottom:10px; display:flex; align-items:center; gap:4px; background:#030604; }
+#cargo[hidden] { display:none; }
+#cargo > span { font-size:10px; }
+#cargo button { width:28px; height:28px; padding:0; border:1px solid #6d9b6b; background:#112113; }
+#cargo img { width:100%; height:100%; object-fit:contain; }
+@media(max-width:620px) { #cargo { left:6px; right:6px; bottom:4px; } #cargo button { width:22px; height:22px; } }
