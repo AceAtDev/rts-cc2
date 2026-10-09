@@ -1,4 +1,5 @@
 import {ignoreWorkerCollision} from './workers.js';
+import {ignoreConstructionCollision} from './construction.js';
 import {contactPoint,segmentBlocked} from './geometry.js';
 import {turnTowards,terrainRadius,SCALE} from './unit-profiles.js';
 
@@ -24,7 +25,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
   function availableContact(e,target,radius){
     const startAngle=Math.atan2(e.y-target.y,e.x-target.x);
     const bodies=entities().filter(b=>b!==e&&b!==target&&b.hp>0&&!b.building&&!b.loadedIn&&!b.insideRefinery&&!b.flying&&
-      !ignoreWorkerCollision(e,b)&&dist(b,target)<=radius+e.r+b.r+.5);
+      !ignoreWorkerCollision(e,b)&&!ignoreConstructionCollision(e,b)&&dist(b,target)<=radius+e.r+b.r+.5);
     let best=null,cost=Infinity;
     for(let i=0;i<64;i++){
       const angle=startAngle+i*Math.PI/32,q={x:target.x+Math.cos(angle)*radius,y:target.y+Math.sin(angle)*radius};
@@ -189,7 +190,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     let vx=dx/len*speed,vy=dy/len*speed;
     const ux=vx/speed,uy=vy/speed;
     if(!e.flying)for(const b of neighbors(e)) {
-      if(b===e||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(e,b))continue;
+      if(b===e||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(e,b)||ignoreConstructionCollision(e,b))continue;
       const formationPeers=point===e.order&&e.order?.formation==='preserved'&&b.order?.formation==='preserved'&&
         e.order.batch!==undefined&&e.order.batch===b.order.batch&&e.team===b.team&&!e.combatTarget&&!b.combatTarget;
       const aPosition=formationPeers?(starts.get(e)||e):e,bPosition=formationPeers?(starts.get(b)||b):b;
@@ -260,7 +261,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
   }
   function collision() {
     for(const a of entities())if(!a.building&&!a.loadedIn&&!a.flying&&a.hp>0)for(const b of neighbors(a)) {
-      if(b.id<=a.id||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(a,b))continue;
+      if(b.id<=a.id||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(a,b)||ignoreConstructionCollision(a,b))continue;
       let dx=a.x-b.x,dy=a.y-b.y,d=length(dx,dy),gap=a.r+b.r+.5;
       if(d>=gap)continue;
       if(d<.001){dx=a.id%2?.01:-.01;dy=.007;d=length(dx,dy);}
@@ -282,7 +283,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     // last so the result of a collision pass respects those physical anchors.
     for(const a of entities())if(!a.building&&!a.loadedIn&&!a.insideRefinery&&!a.flying&&a.hp>0&&!(a.hold||a.sieged||a.transform)){
       for(const b of neighbors(a)){
-        if(b===a||b.hp<=0||b.insideRefinery||!(b.hold||b.sieged||b.transform)||ignoreWorkerCollision(a,b))continue;
+        if(b===a||b.hp<=0||b.insideRefinery||!(b.hold||b.sieged||b.transform)||ignoreWorkerCollision(a,b)||ignoreConstructionCollision(a,b))continue;
         let dx=a.x-b.x,dy=a.y-b.y,d=length(dx,dy);const gap=a.r+b.r+.5;
         if(d>=gap)continue;
         if(d<.001){dx=a.id%2?.01:-.01;dy=.007;d=length(dx,dy);}
