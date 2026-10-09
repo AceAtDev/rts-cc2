@@ -53,6 +53,31 @@ check('Dead explicit target is never converted into a new aggressive objective b
   h.combat.acceptOrder(a);b.hp=0;h.step(a);assert.equal(a.attackTargetMemory,null);assert.equal(a.order.kind,'attack');
   // game.js completes dead target orders before engage, promoting Shift queue.
 });
+check('Unseen target death before the first loop produces the same last-seen fallback as survival',()=>{
+  const states=[];
+  for(const hp of [1000,0]){
+    const a=unit(1,500),b=unit(2,700,1),h=make([a,b]);a.order={kind:'attack',target:b,acceptedLoop:42};
+    h.combat.acceptOrder(a);b.hidden=true;b.x=1100;b.hp=hp;h.step(a);
+    states.push({...a.order});assert.equal(a.attackTargetMemory,b);
+  }
+  assert.deepEqual(states[0],states[1]);assert.equal(states[0].kind,'attackMove');assert.equal(states[0].x,700);
+});
+check('A target dying after fallback stays remembered while its death remains unseen',()=>{
+  const a=unit(1,500),b=unit(2,700,1),h=make([a,b]);a.order={kind:'attack',target:b};
+  h.combat.acceptOrder(a);b.hidden=true;h.step(a);const fallback=a.order;b.hp=0;
+  for(let i=0;i<5;i++)h.step(a);assert.equal(a.order,fallback);assert.equal(a.attackTargetMemory,b);
+});
+check('An observed dead remembered target restores explicit completion intent for the order executor',()=>{
+  const a=unit(1,500),b=unit(2,700,1),h=make([a,b]);a.order={kind:'attack',target:b,acceptedLoop:42};
+  h.combat.acceptOrder(a);b.hidden=true;h.step(a);b.hp=0;b.hidden=false;assert.equal(h.step(a),false);
+  assert.equal(a.order.kind,'attack');assert.equal(a.order.target,b);assert.equal(a.order.acceptedLoop,42);
+  assert.equal(a.attackTargetMemory,null);assert.equal(h.moves.length,0);
+});
+check('Friendly target death is known even outside the enemy-visibility callback',()=>{
+  const a=unit(1,500),b=unit(2,700,0),h=make([a,b]);a.order={kind:'attack',target:b};
+  h.combat.acceptOrder(a);b.hidden=true;b.hp=0;assert.equal(h.step(a),false);
+  assert.equal(a.order.kind,'attack');assert.equal(a.order.target,b);assert.equal(a.attackTargetMemory,null);
+});
 check('An acquired automatic target remains stable beyond the scan-plus-slop boundary',()=>{
   const a=unit(1,500),b=unit(2,660,1),h=make([a,b]);a.order={kind:'attackMove',x:1100,y:500};
   a.cooldown=2;h.step(a);assert.equal(a.combatTarget,b);b.x=730;

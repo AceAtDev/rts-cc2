@@ -6,6 +6,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const weapon=e=>e.sieged?SIEGE_WEAPON:e.weapon||{range:e.range,scan:e.range,minimum:0,period:e.cool,point:.12,backswing:.25,damage:e.damage,turret:true};
   const valid=(e,t,w)=>!!t&&t.hp>0&&(t.team!==e.team||e.order?.kind==='attack'&&e.order.target===t&&t!==e)&&!t.planned&&!t.loadedIn&&!t.insideRefinery&&(!t.flying||w.air)&&visible(e,t);
+  const observed=(e,t)=>!!t&&(t.team===e.team||visible(e,t));
   // Range is measured between footprints, not the two unit centers.
   const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
   const priority=t=>t.attackTargetPriority??(t.building?(t.damage?20:11):20);
@@ -82,7 +83,8 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   function engage(e,dt) {
     if(!e.damage||e.flying||e.transform)return false;
     const w=weapon(e);let o=e.order;
-    if(o?.kind==='attackMove'&&e.attackTargetMemory&&valid(e,e.attackTargetMemory,w)) {
+    if(o?.kind==='attackMove'&&e.attackTargetMemory&&
+      (valid(e,e.attackTargetMemory,w)||(observed(e,e.attackTargetMemory)&&e.attackTargetMemory.hp<=0))) {
       const {x,y,...intent}=o;
       o=e.order={...intent,kind:'attack',target:e.attackTargetMemory};e.attackTargetMemory=null;
     }
@@ -126,11 +128,13 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
       e.windup=null;e.combatTarget=null;
       // Dead explicit targets complete in the order executor; do not invent a
       // new attack-move objective or interfere with a queued successor.
-      if(o.target?.hp<=0){e.attackTargetMemory=null;return false;}
+      if(observed(e,o.target)&&o.target.hp<=0){e.attackTargetMemory=null;return false;}
       // Do not read a hidden enemy's live coordinates to chase it through fog.
       if(e.attackLastSeen) {
         const {target:lostTarget,...intent}=o;
-        e.attackTargetMemory=lostTarget?.hp>0?lostTarget:null;
+        // Retain identity without inspecting unseen life state. Hidden death
+        // must not change last-seen pursuit or expose information through it.
+        e.attackTargetMemory=lostTarget||null;
         e.order={...intent,kind:'attackMove',...e.attackLastSeen};
       }
       return false;
