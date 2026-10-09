@@ -1,5 +1,5 @@
 import {ignoreWorkerCollision} from './workers.js';
-import {contactPoint} from './geometry.js';
+import {contactPoint,segmentBlocked} from './geometry.js';
 import {turnTowards,terrainRadius,SCALE} from './unit-profiles.js';
 
 // Custom local crowd solver, not Blizzard's navigation implementation.
@@ -21,6 +21,27 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     for(let yy=y-1;yy<=y+1;yy++)for(let xx=x-1;xx<=x+1;xx++)out.push(...(cells.get(xx+','+yy)||[]));
     return out;
   }
+  function availableContact(e,target,radius){
+    const startAngle=Math.atan2(e.y-target.y,e.x-target.x);
+    const bodies=entities().filter(b=>b!==e&&b!==target&&b.hp>0&&!b.building&&!b.loadedIn&&!b.insideRefinery&&!b.flying&&
+      !ignoreWorkerCollision(e,b)&&dist(b,target)<=radius+e.r+b.r+.5);
+    let best=null,cost=Infinity;
+    for(let i=0;i<64;i++){
+      const angle=startAngle+i*Math.PI/32,q={x:target.x+Math.cos(angle)*radius,y:target.y+Math.sin(angle)*radius};
+      if(!openPoint(q,terrainRadius(e)))continue;
+      let occupied=false;
+      for(const b of bodies){
+        const reservation=b.pursuitState?.target===target&&b.pursuitState.order===b.order&&b.pursuitState.angle!==undefined&&dist(b,target)<=b.pursuitState.radius+2;
+        const p=reservation?{x:target.x+Math.cos(b.pursuitState.angle)*b.pursuitState.radius,y:target.y+Math.sin(b.pursuitState.angle)*b.pursuitState.radius}:b;
+        if(dist(q,p)<e.r+b.r+.5){occupied=true;break;}
+      }
+      if(occupied)continue;
+      const delta=Math.abs(Math.atan2(Math.sin(angle-startAngle),Math.cos(angle-startAngle)));
+      const score=dist(e,q)+(segmentBlocked(e,q,e.r+.5,target)?radius*delta:0);
+      if(score<cost){cost=score;best=angle;}
+    }
+    return best;
+  }
   function move(e,point,dt,stopAt=3) {
     if(e.sieged||e.transform||e.loadedIn)return false;
     const radius=terrainRadius(e);
@@ -34,6 +55,39 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     // repulsion halo can finish exactly without demanding impossible centers.
     if(stopAt===0&&reservation&&!e.order.exactFormation)stopAt=3;
     let p=reservation&&dist(e,point)<(e.order.arrivalRadius||0)+65?reservation:point;
+    const combatPursuit=point===e.combatTarget&&point.hp>0&&!point.footprint&&!point.flying&&stopAt<e.r+point.r+2*e.r;
+    if(combatPursuit){
+      if(e.pursuitState?.target!==point||e.pursuitState.order!==e.order)e.pursuitState={target:point,order:e.order,stalled:0,wait:0};
+      const state=e.pursuitState;
+      // Contact recovery is local. A receding target outside this neighborhood
+      // is ordinary pursuit, even when relative distance cannot decrease.
+      if(dist(e,point)>stopAt+4*e.r+e.speed*.32){state.angle=undefined;state.best=undefined;state.stalled=0;}
+      const progressGoal=state.angle===undefined?point:{x:point.x+Math.cos(state.angle)*stopAt,y:point.y+Math.sin(state.angle)*stopAt};
+      const remainingContact=dist(e,progressGoal);
+      if(state.best===undefined||remainingContact<state.best-.5){state.best=remainingContact;state.stalled=0;}
+      else state.stalled+=dt;
+      state.radius=stopAt;state.wait=Math.max(0,state.wait-dt);
+      if(state.stalled>.6&&state.wait<=0){
+        const angle=availableContact(e,point,stopAt);
+        state.wait=.2;
+        if(angle!==null){state.angle=angle;state.stalled=0;state.best=undefined;}
+        else{e.vx=e.vy=0;return false;}
+      }else if(state.stalled>.6&&state.wait>0){e.vx=e.vy=0;return false;}
+      if(state.angle!==undefined){
+        p={x:point.x+Math.cos(state.angle)*stopAt,y:point.y+Math.sin(state.angle)*stopAt};
+        // Use a clear annular leg rather than cutting through the chased unit
+        // to reach a vacant face on its opposite side.
+        const firingBlockers=entities().filter(b=>b!==e&&b!==point&&b.hp>0&&b.team===e.team&&b.combatTarget&&length(b.vx||0,b.vy||0)<3&&
+          dist(b,point)<stopAt+e.r+b.r+.5+e.speed*.32);
+        if(segmentBlocked(e,p,e.r+.5,point)||firingBlockers.some(b=>segmentBlocked(e,p,e.r+.5,b))){
+          const start=Math.atan2(e.y-point.y,e.x-point.x),delta=Math.atan2(Math.sin(state.angle-start),Math.cos(state.angle-start));
+          const angle=start+Math.sign(delta)*Math.min(Math.abs(delta),Math.PI/6);
+          const outerRadius=(stopAt+e.r+Math.max(e.r,...firingBlockers.map(b=>b.r))+.5)/Math.cos(Math.PI/12);
+          p={x:point.x+Math.cos(angle)*outerRadius,y:point.y+Math.sin(angle)*outerRadius};
+        }
+        stopAt=0;
+      }
+    }else e.pursuitState=null;
     const exactPoint=stopAt===0&&!e.flying&&point===e.order&&['move','attackMove'].includes(e.order?.kind);
     if(!exactPoint)e.pointBrake=null;
     if(p.footprint&&stopAt>5){
@@ -118,13 +172,18 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     let dx=dest.x-e.x,dy=dest.y-e.y,len=length(dx,dy);
     if(len<.001){e.nav=null;return false;}
     if(e.turnBeforeMove&&!e.flying){
+      // A new command/target begins stationary alignment. Once that intent is
+      // underway, local steering uses the moving turn rate instead of stopping
+      // again for the small heading correction produced by every crowd frame.
+      if(e.turnGate?.order!==e.order||e.turnGate.point!==point)e.turnGate={order:e.order,point,active:true};
       const heading=Math.atan2(dy,dx),error=Math.atan2(Math.sin(heading-e.angle),Math.cos(heading-e.angle));
-      if(Math.abs(error)>1e-6){
+      if(e.turnGate.active&&Math.abs(error)>1e-6){
         e.vx=e.vy=0;
         e.angle=turnTowards(e.angle,heading,e.stationaryTurnRate||e.turnRate||20,dt);
         const remainingAngle=Math.atan2(Math.sin(heading-e.angle),Math.cos(heading-e.angle));
         if(Math.abs(remainingAngle)>1e-6)return false;
       }
+      e.turnGate.active=false;
     }
     const speed=e.speed*(e.stim?1.5:1)*(e.slow? .5:1);
     let vx=dx/len*speed,vy=dy/len*speed;
@@ -148,7 +207,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       }
       // Anticipate crossing traffic and anchored units. Ordinary idle allies
       // can yield through the contact solver, so they do not become walls.
-      if(!pursuit&&forward>0&&forward<gap+speed*.32&&Math.abs(cross)<gap+2&&(!sameDirection&&(anchored||bv>3))) {
+      if(!pursuit&&forward>0&&forward<gap+speed*.32&&Math.abs(cross)<gap+2&&(!sameDirection&&(anchored||bv>3||b.combatTarget))) {
         const side=Math.abs(cross)>1?(cross>=0?1:-1):1;
         const force=speed*.85*(1-Math.abs(cross)/(gap+2))*clamp((gap+speed*.32-forward)/(speed*.32),0,1);
         vx+=-uy*side*force;vy+=ux*side*force;
@@ -208,13 +267,27 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       const sameBatch=a.arrivalBatch&&a.arrivalBatch===b.arrivalBatch;
       const movingA=length(a.vx,a.vy)>3,movingB=length(b.vx,b.vy)>3;
       const enemy=a.team!==b.team;
-      const anchorA=a.hold||a.sieged||a.transform||(enemy&&!movingA&&movingB),anchorB=b.hold||b.sieged||b.transform||(enemy&&!movingB&&movingA);
+      const anchorA=a.hold||a.sieged||a.transform||(!movingA&&movingB&&(enemy||a.combatTarget));
+      const anchorB=b.hold||b.sieged||b.transform||(!movingB&&movingA&&(enemy||b.combatTarget));
       if(anchorA&&anchorB)continue;
       const wa=anchorA?0:anchorB?1:!movingA&&movingB?(sameBatch?.6:.85):!movingB&&movingA?(sameBatch?.4:.15):.5;
       const overlap=(gap-d)*.95;
       for(const [e,f,sign] of [[a,wa,1],[b,1-wa,-1]]) {
         const p={x:clamp(e.x+dx/d*overlap*f*sign,e.r,world.w-e.r),y:clamp(e.y+dy/d*overlap*f*sign,e.r,world.h-e.r)};
         if(openPoint(p,terrainRadius(e))){e.x=p.x;e.y=p.y;}
+      }
+    }
+    // Friendly pair settling can push an earlier unit back into a held/sieged
+    // body after that pair was already processed. Resolve immutable contacts
+    // last so the result of a collision pass respects those physical anchors.
+    for(const a of entities())if(!a.building&&!a.loadedIn&&!a.insideRefinery&&!a.flying&&a.hp>0&&!(a.hold||a.sieged||a.transform)){
+      for(const b of neighbors(a)){
+        if(b===a||b.hp<=0||b.insideRefinery||!(b.hold||b.sieged||b.transform)||ignoreWorkerCollision(a,b))continue;
+        let dx=a.x-b.x,dy=a.y-b.y,d=length(dx,dy);const gap=a.r+b.r+.5;
+        if(d>=gap)continue;
+        if(d<.001){dx=a.id%2?.01:-.01;dy=.007;d=length(dx,dy);}
+        const p={x:clamp(b.x+dx/d*gap,a.r,world.w-a.r),y:clamp(b.y+dy/d*gap,a.r,world.h-a.r)};
+        if(openPoint(p,terrainRadius(a))){a.x=p.x;a.y=p.y;}
       }
     }
   }
