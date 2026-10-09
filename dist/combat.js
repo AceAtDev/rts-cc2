@@ -5,7 +5,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   let missiles=[];
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const weapon=e=>e.sieged?SIEGE_WEAPON:e.weapon||{range:e.range,scan:e.range,minimum:0,period:e.cool,point:.12,backswing:.25,damage:e.damage,turret:true};
-  const valid=(e,t,w)=>!!t&&t.hp>0&&t.team!==e.team&&!t.planned&&!t.loadedIn&&!t.insideRefinery&&(!t.flying||w.air)&&visible(e,t);
+  const valid=(e,t,w)=>!!t&&t.hp>0&&(t.team!==e.team||e.order?.kind==='attack'&&e.order.target===t&&t!==e)&&!t.planned&&!t.loadedIn&&!t.insideRefinery&&(!t.flying||w.air)&&visible(e,t);
   // Range is measured between footprints, not the two unit centers.
   const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
   const priority=t=>t.building?(t.damage?20:11):20;
@@ -17,21 +17,21 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     for(const [attr,bonus] of Object.entries(w.bonus||{}))if(t.attributes?.includes(attr))amount+=bonus;
     if(upgrades.weapons&&['marine','marauder','reaper'].includes(e.type))amount+=e.type==='marauder'&&t.attributes?.includes('Armored')?2:1;
     const armor=(t.armor||0)+(defense.armor&&['marine','marauder','reaper'].includes(t.type)?1:0);
-    t.hp-=Math.max(.5,amount*fraction-armor);t.lastDamageAt=clock();
+    t.hp-=Math.max(.5,amount*fraction-armor);t.lastDamageAt=clock();t.lastAttacker=e;
     if(t.hp<=0)e.kills++;
     if(e.type==='marauder'&&upgrades.concussiveResearch&&!t.building&&!t.attributes?.includes('Massive'))t.slow=1.5/FASTER;
   }
   function impact(e,t,w,point) {
     if(w.line) {
       const a=Math.atan2(point.y-e.y,point.x-e.x),ux=Math.cos(a),uy=Math.sin(a);
-      for(const u of entities())if(u.hp>0&&u.team!==e.team&&!u.flying&&!u.loadedIn) {
+      for(const u of entities())if(u.hp>0&&(u.team!==e.team||u===t)&&!u.flying&&!u.loadedIn&&!u.insideRefinery&&!u.planned) {
         const dx=u.x-e.x,dy=u.y-e.y,along=dx*ux+dy*uy,across=Math.abs(dx*uy-dy*ux);
         if(along>=0&&along<=w.line+u.r&&across<=w.lineRadius+u.r)damage(e,u,w);
       }
       shots().push({x:e.x,y:e.y,tx:e.x+ux*w.line,ty:e.y+uy*w.line,flame:true,life:.23});
     } else {
       damage(e,t,w);
-      if(w.splash&&!t.building)for(const u of entities())if(u!==t&&u!==e&&u.hp>0&&!u.flying&&!u.loadedIn) {
+      if(w.splash&&!t.building)for(const u of entities())if(u!==t&&u!==e&&u.hp>0&&!u.flying&&!u.loadedIn&&!u.insideRefinery&&!u.planned) {
         const band=w.splash.find(([radius])=>dist(u,point)<=radius);
         if(band)damage(e,u,w,band[1]); // Siege splash includes friendly ground units.
       }
@@ -71,16 +71,17 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
   }
   function engage(e,dt) {
     if(!e.damage||e.flying||e.transform)return false;
-    const w=weapon(e),o=e.order,manual=o?.kind==='attack';
-    if(['move','follow','land'].includes(o?.kind)){e.combatTarget=null;return false;}
+    const w=weapon(e),o=e.order,manual=o?.kind==='attack',defensive=e.acquireLevel==='Defensive'&&!['attackMove','patrol'].includes(o?.kind);
+    if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;return false;}
     let target=manual?o.target:e.combatTarget;
-    if(!valid(e,target,w)||(!manual&&(!inRange(e,target,w,SCALE)||(e.hold||e.sieged)&&!inRange(e,target,w))))target=null;
+    const windupSlop=t=>e.windup?.target===t?(w.rangeSlop||0):0;
+    if(!valid(e,target,w)||(!manual&&(surface(e,target).distance-e.r>Math.max(w.scan,w.range)+(w.rangeSlop||0)||(e.hold||e.sieged||defensive)&&!inRange(e,target,w,windupSlop(target)))))target=null;
     e.acquireTime=(e.acquireTime||0)-dt;
     if(!manual&&(e.acquireTime<=0||!target)) {
       e.acquireTime=.1;
       let best=target;
-      for(const t of entities())if(valid(e,t,w)&&dist(e,t)<=Math.max(w.scan,w.range)+e.r+t.r&&dist(e,t)>=w.minimum+e.r+t.r) {
-        if((e.hold||e.sieged)&&!inRange(e,t,w))continue;
+      for(const t of entities())if(valid(e,t,w)&&surface(e,t).distance-e.r<=Math.max(w.scan,w.range)&&surface(e,t).distance-e.r>=w.minimum) {
+        if((e.hold||e.sieged||defensive)&&!inRange(e,t,w))continue;
         // Keep an equally important target. A newly closer unit never steals
         // an existing valid attack. Threat priority can supersede a structure.
         if(!best||priority(t)>priority(best)||!target&&priority(t)===priority(best)&&dist(e,t)<dist(e,best))best=t;
@@ -96,7 +97,7 @@ export function createCombat({entities,visible,move,research,shots,clock}) {
     if(manual&&target)e.attackLastSeen={x:target.x,y:target.y};
     e.combatTarget=target;
     if(!target){e.windup=null;return false;}
-    if(!inRange(e,target,w)) {
+    if(!inRange(e,target,w,windupSlop(target))) {
       e.windup=null;
       if(e.backswing>0){e.vx=e.vy=0;return true;}
       if(!e.hold&&!e.sieged&&!e.building)move(e,target,dt,w.range+e.r+target.r-1);

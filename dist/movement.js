@@ -91,7 +91,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       if(dd<.001)continue;
       const forward=bx*ux+by*uy,cross=bx*uy-by*ux;
       const settled=b.arrived&&b.arrivalBatch&&b.arrivalBatch===e.arrivalBatch&&!b.order;
-      const anchored=b.hold||b.sieged||b.team!==e.team;
+      const anchored=b.hold||b.sieged||b.team!==e.team,pursuit=b===e.combatTarget;
       const bv=length(b.vx||0,b.vy||0),sameDirection=bv>3&&((b.vx*ux+b.vy*uy)/bv)>.75;
       if(!anchored&&!b.order&&!b.combatTarget&&forward>0&&forward<gap+speed*.4&&Math.abs(cross)<gap+2) {
         const side=Math.abs(cross)>1?(cross>=0?-1:1):(b.id%2?1:-1);
@@ -101,7 +101,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       }
       // Anticipate crossing traffic and anchored units. Ordinary idle allies
       // can yield through the contact solver, so they do not become walls.
-      if(forward>0&&forward<gap+speed*.32&&Math.abs(cross)<gap+2&&(!sameDirection&&(anchored||bv>3))) {
+      if(!pursuit&&forward>0&&forward<gap+speed*.32&&Math.abs(cross)<gap+2&&(!sameDirection&&(anchored||bv>3))) {
         const side=Math.abs(cross)>1?(cross>=0?1:-1):1;
         const force=speed*.85*(1-Math.abs(cross)/(gap+2))*clamp((gap+speed*.32-forward)/(speed*.32),0,1);
         vx+=-uy*side*force;vy+=ux*side*force;

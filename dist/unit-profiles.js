@@ -10,7 +10,7 @@ const profile = (speed, radius, acceleration, lateral, turn, attributes, weapon)
   weapon: { ...weapon, range: weapon.range * SCALE,
     scan: weapon.scan * SCALE, minimum: (weapon.minimum || 0) * SCALE,
     period: weapon.period / FASTER, point: weapon.point / FASTER,
-    backswing: weapon.backswing / FASTER },
+    backswing: weapon.backswing / FASTER,rangeSlop:SCALE },
 });
 export const PROFILES = {
   worker: profile(2.8125,.375,2.5,46,999.8437,['Light','Biological','Mechanical'],
@@ -28,11 +28,12 @@ export const PROFILES = {
 };
 export const SIEGE_WEAPON = {range:13*SCALE,scan:13*SCALE,minimum:2*SCALE,
   period:3/FASTER,point:.167/FASTER,backswing:.5/FASTER,damage:40,
-  bonus:{Armored:30},turret:true,splash:[ [.4687*SCALE,1],[.7812*SCALE,.5],[1.25*SCALE,.25] ]};
+  bonus:{Armored:30},rangeSlop:SCALE,turret:true,splash:[ [.4687*SCALE,1],[.7812*SCALE,.5],[1.25*SCALE,.25] ]};
 export function applyProfiles(defs) {
   for (const [type,p] of Object.entries(PROFILES)) Object.assign(defs[type],p,
     {range:p.weapon.range,damage:p.weapon.damage*(p.weapon.burst||1),cool:p.weapon.period,
       vision:{worker:8,marine:9,marauder:10,reaper:9,hellion:10,tank:11}[type]*SCALE});
+  defs.worker.acquireLevel='Defensive';defs.worker.response='Flee';
   for(const d of Object.values(defs)) if(d.building) d.attributes=['Armored','Mechanical','Structure'];
 }
 export function turnTowards(angle,goal,rate,dt) {
