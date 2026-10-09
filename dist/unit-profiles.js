@@ -2,6 +2,7 @@
 // SC2 catalog distances are game units and times are Normal speed. This world
 // uses 28 world units per game unit and runs at Faster (1.4x) in real seconds.
 export const SCALE = 28, FASTER = 1.4;
+export const terrainRadius=e=>e.innerRadius??e.r;
 const profile = (speed, radius, acceleration, lateral, turn, attributes, weapon) => ({
   speed: speed * SCALE * FASTER, r: radius * SCALE,
   acceleration: acceleration * SCALE * FASTER * FASTER,
@@ -33,6 +34,11 @@ export function applyProfiles(defs) {
   for (const [type,p] of Object.entries(PROFILES)) Object.assign(defs[type],p,
     {range:p.weapon.range,damage:p.weapon.damage*(p.weapon.burst||1),cool:p.weapon.period,
       vision:{worker:8,marine:9,marauder:10,reaper:9,hellion:10,tank:11}[type]*SCALE});
+  defs.worker.innerRadius=.3125*SCALE;
+  const priorities={marine:78,marauder:76,tank:74,reaper:70,hellion:66,worker:58,core:32,relay:26,barracks:24,factory:22,engineering:18,techlab:2,reactor:1,refinery:1};
+  const repairs={worker:16.667,tank:45,hellion:30,core:100,relay:30,barracks:65,factory:60,engineering:35,techlab:25,reactor:50,refinery:30};
+  for(const [type,priority] of Object.entries(priorities))defs[type].subgroupPriority=priority;
+  for(const [type,timing] of Object.entries(repairs))defs[type].repairTime=timing/FASTER;
   defs.worker.acquireLevel='Defensive';defs.worker.response='Flee';
   for(const d of Object.values(defs)) if(d.building) d.attributes=['Armored','Mechanical','Structure'];
 }

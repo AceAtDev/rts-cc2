@@ -4,7 +4,7 @@ import {FASTER,turnTowards} from './unit-profiles.js';
 export const HARVEST={mineralTime:2.786/FASTER,gasTime:1.981/FASTER,returnDelay:.5/FASTER,mineralAmount:5,gasAmount:4};
 export const mineralWalking=e=>e.type==='worker'&&['mine','gas','return'].includes(e.order?.kind);
 export const ignoreWorkerCollision=(a,b)=>(mineralWalking(a)&&(!b.alwaysCheckCollision||mineralWalking(b)))||(mineralWalking(b)&&(!a.alwaysCheckCollision||mineralWalking(a)));
-export function createWorkers({entities,minerals,move,complete,pay,invalidateNav}){
+export function createWorkers({entities,minerals,move,complete,issue,pay,invalidateNav}){
   const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   function release(e){
     const resource=e.harvestResource;if(resource?.harvester===e)resource.harvester=null;
@@ -22,19 +22,20 @@ export function createWorkers({entities,minerals,move,complete,pay,invalidateNav
   function accept(e,order){release(e);if(order.kind==='mine'&&order.node)order.node=patch(e,order.node);if(['mine','gas'].includes(order.kind)){order.phase=e.carry?'home':'out';e.mineTime=0;}}
   function deposit(e,home,o){
     e.deliveredTrips=(e.deliveredTrips||0)+1;pay(e.team,e.carryGas?0:-e.carry,e.carryGas?-e.carry:0);e.carry=0;e.carryGas=false;
-    if(o.kind==='return'){e.order=o.resume||e.orders.shift()||null;e.nav=null;return;}
+    if(o.kind==='return'){const resume=o.resume,queued=e.orders.length;complete(e);if(!queued&&resume)issue(e,{...resume,phase:'out'});return;}
     if(e.orders.length){complete(e);return;}
     o.phase='out';e.nav=null;
   }
   function update(e,dt){
-    const o=e.order,home=entities().filter(b=>b.team===e.team&&b.type==='core'&&b.ready&&!b.flying&&b.hp>0).reduce((a,b)=>!a||distance(e,b)<distance(e,a)?b:a,null);
+    const o=e.order,homes=entities().filter(b=>b.team===e.team&&b.type==='core'&&b.ready&&!b.flying&&b.hp>0);const home=o.kind==='return'&&homes.includes(o.target)?o.target:homes.reduce((a,b)=>!a||distance(e,b)<distance(e,a)?b:a,null);
     if(!home){release(e);complete(e);return;}
     let resource=o.kind==='mine'?o.node:o.target;
     if(o.kind==='return'||o.phase==='home'){
       release(e);if(move(e,home,dt,home.r+e.r+.2))deposit(e,home,o);return;
     }
     if(o.kind==='mine'&&(!resource||resource.amount<=0)){release(e);resource=o.node=patch(e);e.nav=null;if(!resource){complete(e);return;}}
-    if(o.kind==='gas'&&(!resource?.ready||resource.hp<=0||resource.geyser?.amount<=0)){release(e);complete(e);return;}
+    if(o.kind==='gas'&&(!resource||resource.hp<=0||resource.geyser?.amount<=0)){release(e);complete(e);return;}
+    if(o.kind==='gas'&&!resource.ready){release(e);move(e,resource,dt,resource.r+e.r+.2);return;}
     if(resource.harvester&&(resource.harvester.hp<=0||resource.harvester.harvestResource!==resource))resource.harvester=null;
     if(o.phase==='harvest'){
       if(e.harvestResource!==resource){o.phase='out';return;}
