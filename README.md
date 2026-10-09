@@ -33,7 +33,8 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 | Tab / Shift-Tab | Cycle subgroups while preserving the selection |
 | F1 / Ctrl-F1 / F2 | Idle worker / all idle workers / army |
 | Backspace / Space | Cycle bases / recent notifications |
-| Ctrl-F5–F8 / F5–F8 | Save / recall a camera position |
+| Ctrl-F5–F8 / F5–F8 | Save / recall camera position; add Shift for the second bank |
+| Home / End | Farthest / closest zoom stop |
 | Arrows / screen edges / middle drag | Pan the camera |
 | Scroll / Page Up / Page Down | Five player distance/pitch zoom stops |
 | Hold Insert / Delete | Temporarily rotate camera left / right |
@@ -157,3 +158,5 @@ The scripts use a system Chromium executable when available, otherwise Playwrigh
 StarCraft II button and resource artwork belongs to Blizzard Entertainment. Its source references and preserved notices are in `dist/reference-data.json` and `dist/assets/icons/`. Three.js is bundled with its MIT license in `dist/vendor/THREE-LICENSE.txt`. Those notices apply to their respective third-party materials. Oxanium is bundled with its OFL license in `dist/assets/hud/OFL.txt`.
 
 The worker/placement follow-up adds `tests/building_grid.py`, `tests/worker_controls.py`, `tests/attack_controls.py`, and `tests/command_clicks.py`. These cover footprint grids, resource interruptions, mining traffic, construction plans, melee pursuit, shot range slop, and actual command targeting. Passing them does not establish exact SC2 control fidelity; native-client comparison remains required.
+
+Small control details and sourced remaining gaps: [October audit](docs/sc2-small-details-audit.md).
