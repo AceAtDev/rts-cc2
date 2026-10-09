@@ -11,7 +11,7 @@ with sync_playwright() as p:
  results=page.evaluate('''() => {
  const g=__game,out=[],dt=1/60;
  const check=(name,ok,detail)=>out.push({name,pass:!!ok,detail});
- const tick=n=>{for(let i=0;i<n;i++)g.update(dt)};const command=(x,y)=>{g.running=true;g.command(x,y,false,false,'move');g.running=false;};
+ const tick=n=>{for(let i=0;i<n;i++)g.update(dt)};const nativeTick=n=>{for(let i=0;i<n;i++)g.update(1/22.4)};const command=(x,y)=>{g.running=true;g.command(x,y,false,false,'move');g.running=false;};
  const setup=()=>{g.reset();g.start();g.running=false;g.aiEnabled=false;for(let i=g.entities.length-1;i>=0;i--)if(!g.entities[i].building)g.entities.splice(i,1);};
  const dummy=(type,x,y,hp=1000)=>{const t=g.spawn(type,1,x,y);t.hp=t.maxhp=hp;t.damage=0;g.stop(t,true);return t;};
  setup();let m=g.spawn('marine',0,700,1040),w=g.spawn('worker',0,700,1140);
@@ -21,12 +21,12 @@ with sync_playwright() as p:
  tick(59);check('Marine covers Faster-speed distance in one second',Math.abs(m.x-788.2)<.01,{x:m.x});
  const x=m.x;g.issue(m,{kind:'move',x:600,y:1040});tick(1);check('Reversal responds on next tick',m.x<x&&m.vx<0,{vx:m.vx});
  setup();m=g.spawn('marine',0,700,1040);let t=dummy('marine',800,1040);
- g.issue(m,{kind:'attack',target:t});tick(1);check('Marine does not fire before damage point',t.hp===1000&&!!m.windup);
- g.issue(m,{kind:'move',x:600,y:1040});tick(12);check('Move cancels pending Marine shot',t.hp===1000);
- setup();m=g.spawn('marine',0,700,1040);t=dummy('marine',800,1040);g.issue(m,{kind:'attack',target:t});tick(1);g.issue(m,{kind:'attack',target:t});tick(2);
+ g.issue(m,{kind:'attack',target:t});nativeTick(1);check('Marine does not fire before damage point',t.hp===1000&&!!m.windup);
+ g.issue(m,{kind:'move',x:600,y:1040});nativeTick(12);check('Move cancels pending Marine shot',t.hp===1000);
+ setup();m=g.spawn('marine',0,700,1040);t=dummy('marine',800,1040);g.issue(m,{kind:'attack',target:t});nativeTick(1);g.issue(m,{kind:'attack',target:t});nativeTick(1);
  check('Reissuing same target preserves windup',t.hp===994,{hp:t.hp});
- const cd=m.cooldown;g.issue(m,{kind:'move',x:680,y:1040});tick(1);check('Moving after firing preserves cooldown',m.cooldown>cd-.02&&m.cooldown>0,{cd:m.cooldown});
- g.issue(m,{kind:'attack',target:t});tick(20);check('Stutter commands cannot manufacture extra shots',t.hp===994,{hp:t.hp});tick(20);check('Weapon resumes after its period',t.hp===988,{hp:t.hp});
+ const cd=m.cooldown;g.issue(m,{kind:'move',x:680,y:1040});nativeTick(1);check('Moving after firing preserves cooldown',Math.abs(m.cooldown-(cd-1/22.4))<1e-8&&m.cooldown>0,{cd:m.cooldown});
+ g.issue(m,{kind:'attack',target:t});nativeTick(5);check('Stutter commands cannot manufacture extra shots',t.hp===994,{hp:t.hp});nativeTick(10);check('Weapon resumes after its period',t.hp===988,{hp:t.hp});
  setup();m=g.spawn('marine',0,700,1040);t=dummy('marine',810,1040);tick(4);let nearer=dummy('marine',780,1080);tick(8);
  check('Closer equal-priority unit does not steal target',m.combatTarget===t);
  g.issue(m,{kind:'attack',target:nearer});tick(1);check('Explicit target overrides automatic target',m.combatTarget===nearer);

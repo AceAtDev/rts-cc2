@@ -1,8 +1,6 @@
 # Measuring controls against the native game
 
-The current regression suites compare the prototype with our own expectations.
-They do not establish native StarCraft II movement, worker behavior, input feel,
-or visual fidelity. No native trace has been captured in this environment.
+The regression suites check the prototype against explicit expectations. Licensed native SC2 4.10 captures now independently measure isolated point movement, targeted Gather, Move-to-unit and queued Patrol. Ten straight Move fixtures using recorded native initial headings match every recorded relative position and order-clear loop; see [native arrival](native-arrival-fidelity.md). These bounded observations do not establish full unit behavior, current-patch parity, human input feel or visual fidelity.
 
 ## Feasible source of native trajectories
 
@@ -28,10 +26,12 @@ Spawn fixture units, observe the actual tags and initial positions, then issue
 commands by label. Do not assume a spawn request preserves an obstructed
 coordinate exactly.
 
-The inspected environment has no native executable, maps, replays, PySC2, or
+The initial environment inspection had no native executable, maps, replays, PySC2, or
 client protocol Python package. The official [Linux package instructions](https://github.com/Blizzard/s2client-proto)
 require acceptance of a separate AI and Machine Learning License. No game
-package was downloaded or license accepted during this research. An existing
+package was downloaded or license accepted during that initial research. The later
+[unit-intent pass](unit-intent-integration.md) installed the historical 4.10 research client after explicit acceptance and collected native API observations;
+its setup and scope are recorded in [native client research](native-client-license-boundary.md). An existing
 licensed retail installation is another capture route. A historical Linux
 build must be labeled by build/data version; it cannot establish current-patch
 equivalence.
@@ -93,6 +93,17 @@ be treated as browser seconds. Report mean/P95/max position differences,
 missing-unit samples, health differences and first movement times. There is
 deliberately no automatic equivalence verdict.
 
+## Isolated point-Move adapter
+
+`capture_prototype_move.py` records the actual browser executor at 22.4 Hz, converts its 28-world-unit scale, and stores the source commit plus runtime file hashes. It captures SCV distances 1/2/5/10/20 and all five other implemented units at 10 game units, on a clear lane. Default starts face east; optional `--native-directory` uses each captured native initial heading, converted to the prototype's inverted world-Y orientation. `compare_point_moves.py` compares relative displacement and order-clear loops with the private native fixture files; native initial facing stays as captured and time is never shifted to improve agreement. These scalar fixtures do not assert whole-map or renderer equivalence. Using different initial headings exposes the Tank's turn delay in the report; using the recorded heading permits the like-for-like point-movement comparison.
+
+```sh
+python3 tests/native_compare/capture_prototype_move.py --output /absolute/path/prototype-moves.json --native-directory /absolute/path/native-traces
+python3 tests/native_compare/compare_point_moves.py --native-directory /absolute/path/native-traces --prototype /absolute/path/prototype-moves.json
+```
+
+Raw captures and installed client/map assets stay outside the public repository.
+
 ## Fixture matrix and review gates
 
 | Fixture | Native observations needed | Main failure measured |
@@ -111,8 +122,7 @@ own variation. Store the map hash, setup, unit label mapping, commands and
 captured traces. Compare the browser to that distribution without shifting
 time to improve a score. Review synchronized trajectory overlays and videos
 as well as scalar metrics. Acceptance limits must be chosen explicitly from
-observed native repeatability and interaction requirements. None have been
-established yet.
+observed native repeatability and interaction requirements. The isolated point-Move comparisons report observed coordinate and order-lifetime differences directly. Acceptance limits for crowds, combat, mining and human input have not been established.
 
 ## Reproduced issues in our solver
 

@@ -24,7 +24,7 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 | Ctrl-click / double-click | Select visible units of the same type |
 | Shift-click | Add or remove a unit |
 | Right-click | Move, attack, follow, gather, repair, or set a rally point |
-| A / M / S / H / P | Attack / Move / Stop / Hold Position / Patrol |
+| A / M / S / H / P | Attack / Move (or Follow a clicked unit) / Stop / Hold Position / Patrol |
 | Shift + command | Append orders and waypoints |
 | Ctrl + 0–9 / Shift + 0–9 | Set / add to a control group |
 | Ctrl+Alt + 0–9 / Alt+Shift + 0–9 | Set-and-steal / append-and-steal group members |
@@ -48,6 +48,7 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 - A documented 22.4 Hz Faster simulation schedule with retained backlog and interpolated Three.js rendering.
 - Radius-aware A* navigation, shared route corridors, cached walkability grids, and bounded incremental fallback searches.
 - Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
+- Explicit worker targets, fog-safe Follow/Attack intent, pursuit isolated from march slots, and stable moving-target planning.
 - Persistent combat targets, visible-attacker response, explicit Move/Hold preservation, cancelable windup, cooldowns, projectiles, Reaper bursts/regeneration, flame lines, and radius-dependent Siege splash.
 - Physical number-key groups, all ten assignable HUD slots, right-click assignment/stealing, cargo memory, controllable gas harvesters, and interrupted double-tap handling.
 - A paid opponent economy with local harvesting, supply planning, legal construction, scouting, gathering, defense and fog-safe attack orders.
@@ -69,6 +70,11 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `dist/game-loop.js`: authoritative Faster schedule, bounded catch-up, interpolation phase and pause/reset.
 - `dist/control-groups.js`: group operations, physical key handling, membership and double-tap tracking.
 - `dist/opponent-ai.js`: fair paid-economy opponent policy and fog-safe squad decisions.
+- `docs/compact-formation-fidelity.md`: native extent/mean-center probes and shape-preserving movement.
+- `docs/native-gameplay-observations.md`: actual historical native-client provenance and measured movement, formation, mining and combat boundaries.
+- `docs/native-worker-phases.md`, `docs/attack-phase-fidelity.md`, `docs/tank-turn-fidelity.md`: measured worker/weapon/turn phases and their remaining limits.
+- `docs/native-arrival-fidelity.md`: measured point arrival and SCV braking against nine native fixtures.
+- `docs/unit-intent-integration.md`: command, worker, pursuit corrections and native comparison boundaries.
 - `docs/gameplay-loop-integration.md`: gameplay changes, native-rate validation and remaining engine differences.
 - `dist/unit-profiles.js`: extracted movement and weapon numbers with Faster-speed conversion.
 - `dist/movement.js`: route following, crowd steering, destination reservations, and collisions.
@@ -77,7 +83,7 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `dist/combat.js`: acquisition, weapon phases, projectiles, damage, and regeneration.
 - `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
 - `docs/gameplay-audit-followup.md`, `docs/visual-design-followup.md`: reproduced failures and reference-driven changes.
-- `docs/native-control-comparison.md`, `tests/native_compare/`: native capture/comparison procedure; no native traces have been collected here.
+- `docs/native-control-comparison.md`, `tests/native_compare/`: native capture/comparison procedure and browser adapter; historical 4.10 captures now measure isolated movement and order behavior.
 - `dist/renderer.js`: 3D scene, visible-geometry picking, models, interpolation, and battlefield overlays.
 - `dist/camera-profile.js`, `dist/presentation-profile.js`: catalog camera stops and vital palettes.
 - `dist/unit-animation.js`, `dist/building-animation.js`: authored state-driven actor rigs and transitions.
@@ -99,6 +105,10 @@ python3 -m playwright install chromium
 python3 tests/browser_controls.py
 python3 tests/browser_input.py
 python3 tests/unit_micro.py
+python3 tests/unit_intent_integration.py
+node tests/worker_intent_followup.mjs
+node tests/unit_order_fidelity.mjs
+node tests/movement_pursuit_fidelity.mjs
 python3 tests/worker_controls.py
 python3 tests/building_grid.py
 python3 tests/attack_controls.py
@@ -117,9 +127,18 @@ node tests/unit_ai_followup.mjs
 node tests/worker_gameplay_followup.mjs
 node tests/opponent_ai_followup.mjs
 node tests/native_movement_followup.mjs
+node tests/native-arrival-fidelity.mjs
+node tests/tank-turn-fidelity.mjs
+node tests/attack_phase_fidelity.mjs
+node tests/native_worker_phases.mjs
+node tests/compact-formation-fidelity.mjs
 python3 tests/control_groups_input.py
 python3 tests/gameplay_loop_integration.py
 python3 tests/native_loop_gameplay.py
+python3 tests/native_worker_integration.py
+python3 tests/attack_phase_integration.py
+python3 tests/tank_turn_integration.py
+python3 tests/formation_integration.py
 node tests/movement_followup.mjs
 python3 tests/movement_stress.py
 ```
