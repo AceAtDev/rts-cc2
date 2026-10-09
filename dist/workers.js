@@ -21,7 +21,14 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
     const origin=preferred||e;
     return choices.reduce((a,b)=>{const score=n=>distance(n,origin)+Math.max(0,load(n,e)-1)*180+load(n,e)*24;return !a||score(b)<score(a)?b:a;},null);
   }
-  function accept(e,order){release(e);if(order.kind==='mine'&&order.node&&order.autoAcquire)order.node=patch(e,order.node);if(['mine','gas'].includes(order.kind)){order.phase=e.carry?'home':'out';e.mineTime=0;}}
+  function accept(e,order){
+    // Native explicit Gather to the active field preserves extraction, whereas
+    // reissuing Smart/right-click starts a fresh extraction. The host retains
+    // the command source instead of merging both inputs into the same policy.
+    if(order.kind==='mine'&&order.gatherCommand!=='smart'&&liveMineral(order.node)&&
+       e.harvestResource===order.node&&order.node.harvester===e&&!e.carry&&!e.loadedIn){order.phase='harvest';return;}
+    release(e);if(order.kind==='mine'&&order.node&&order.autoAcquire)order.node=patch(e,order.node);if(['mine','gas'].includes(order.kind)){order.phase=e.carry?'home':'out';e.mineTime=0;}
+  }
   function finishReturn(e,o){const resume=o.resume,queued=e.orders.length;complete(e);if(!queued&&resume)issue(e,{...resume,phase:'out'});return e.order?'promoted':undefined;}
   const deferring=e=>e.type==='worker'&&e.order?.phase==='waitReturn'&&e.returnWait>1e-8;
   function deposit(e,home,o){
@@ -36,7 +43,6 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
     // already deposited. It must not create a second empty trip or payment.
     if(o.kind==='return'&&!e.carry){release(e);return finishReturn(e,o);}
     const homes=entities().filter(b=>b.team===e.team&&b.type==='core'&&b.ready&&!b.flying&&b.hp>0);const home=o.kind==='return'&&homes.includes(o.target)?o.target:homes.reduce((a,b)=>!a||distance(e,b)<distance(e,a)?b:a,null);
-    if(!home){release(e);complete(e);return;}
     let resource=o.kind==='mine'?o.node:o.target;
     if(o.phase==='waitReturn'){
       e.vx=e.vy=0;e.returnWait=Math.max(0,e.returnWait-dt);
@@ -47,6 +53,9 @@ export function createWorkers({entities,minerals,move,complete,issue,pay,invalid
       o.phase='home';e.nav=null;
     }
     if(o.kind==='return'||o.phase==='home'){
+      // Native SCVs can harvest with every drop-off absent. Keep their cargo
+      // and return intent stationary until a grounded drop-off becomes usable.
+      if(!home){e.vx=e.vy=0;return;}
       release(e);if(move(e,home,dt,home.r+e.r+.2))return deposit(e,home,o);return;
     }
     // Keep reacquisition local to the depleted field. A distant expansion must

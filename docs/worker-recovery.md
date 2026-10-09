@@ -12,12 +12,27 @@ Availability-only searches previously treated any stored `harvester` pointer as 
 
 Assigning Gas to a Refinery without a linked resource backing could reach extraction and dereference an absent amount object. Such an invalid order now completes safely and promotes the queued next task. Completed refineries backed by live geysers retain the existing gas extraction timing. Waiting on a legitimate unfinished Refinery remains supported.
 
+## New native command and drop-off evidence
+
+The sole native API research owner captured four additional controlled SCV trials with the same pinned native build `4.10.0.75689`. This batch used two Participant clients, so action execution has an extra submission loop relative to the earlier single-Participant phase trial. Its relative event loops should not be mixed with the earlier loop-67 table when evaluating input latency.
+
+| Native trial | Derived observation | Correction |
+| --- | --- | --- |
+| Explicit Gather repeated at requested loop 50 | First cargo at 68, preserving the original extraction | Same-field explicit Gather preserves progress and ownership |
+| Smart/right-click repeated at requested loop 50 | First cargo at 97, 29 loops later than explicit Gather | Smart retains its native extraction restart; do not merge these command sources |
+| Current field killed at 50 with a nearby and a distant live field | Gather targets the nearby field by observation 53, without earning old-field cargo; first new cargo at 132 | Invalid-field recovery releases the old extraction and approaches a living local replacement |
+| All friendly drop-offs absent, new Command Center requested at 120 | Cargo earned at 68; Return remains stationary with cargo and no target; new base target appears at 124, deposit at 150, Gather resumes | Gather must not cancel merely because no grounded drop-off exists |
+
+The host annotates explicit G/command-card Gather with `gatherCommand:'gather'` and mineral right-click with `gatherCommand:'smart'`. Direct internal mine orders default to explicit Gather behavior. Preservation applies only to an already-owned, living mineral field with unfinished extraction. A new destination releases the old slot and progress. This pass does not assume the same reissue policy for gas without a native gas trial.
+
+Gather can now approach and extract with every drop-off absent. After its existing eight-loop wait, an SCV carrying minerals keeps its return intent and cargo while stationary. A newly usable grounded base restarts the home leg. Missing bases no longer prematurely clear the uninterruptible wait or activate its queued successor early. The implementation detects base availability each simulation update; the native trial's exact base-spawn acquisition polling interval is not established by one observed delay.
+
 ## Validation and integration
 
-`node tests/worker_recovery.mjs` runs nine isolated scenarios covering dead mineral search, destruction during extraction, no remaining live fields, stale owners, transported owners, invalid gas backing, earned gas after Refinery destruction, and return fallback when a selected Command Center lifts. The existing 37 isolated worker checks still pass, including the native 45-loop extraction, eight-loop mineral wait, early slot release and queued successor carrying cargo.
+`node tests/worker_recovery.mjs` runs 15 isolated scenarios covering dead mineral search, destruction during extraction, no remaining live fields, stale owners, transported owners, invalid gas backing, earned gas after Refinery destruction, lifted return fallback, explicit Gather versus Smart reissue, changed-resource progress, no-home extraction, return resumption and drop-off loss during the cargo wait. The existing 37 isolated worker checks still pass, including the native 45-loop extraction, eight-loop mineral wait, early slot release and queued successor carrying cargo.
 
 The gas-destruction and lifted-drop-off scenarios exercise the real worker module but bypass browser input and the host's target-death dispatcher. The host must allow a worker already carrying resources to service its return logic rather than canceling it because its previous Refinery or selected drop-off died. Browser integration tests must cover that dispatch order. These recovery validations establish prototype consistency; they do not independently prove every native resource search or route.
 
-## Native comparison points
+## Remaining comparison points
 
-Repeated targeted Gather and Smart during extraction, unavailable drop-offs, and destroyed-field automatic search are being compared through the sole native API research owner. Do not invent progress preservation, an automatic escape order, or a global expansion transfer until that evidence exists. Blocked-resource path handling belongs to movement/navigation: an explicit worker target must not silently become a distant economy assignment merely because approach is difficult.
+Exact patch search weights, contested-field reassignment, blocked-resource approaches, gas command reissue, gas queued successors, and base-spawn search polling still require further native comparisons. Blocked-resource path handling belongs to movement/navigation: an explicit worker target must not silently become a distant economy assignment merely because approach is difficult. No licensed raw observations, executable, map contents or native assets are included in this repository.

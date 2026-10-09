@@ -50,4 +50,39 @@ check('Lifting an explicitly selected return base falls back to a surviving grou
   const f=fixture(),e=f.scv(),selected={...f.home,x:250,flying:true};f.all.push(selected);e.carry=5;f.issue(e,{kind:'return',target:selected});
   f.workers.update(e,0);assert.equal(f.moves.at(-1),f.home);assert.deepEqual(f.payments,[[0,-5,0]]);
 });
+check('Repeating explicit Gather on the active field preserves extraction progress and ownership',()=>{
+  const f=fixture(),e=f.scv();f.issue(e,{kind:'mine',node:f.node,gatherCommand:'gather'});f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime/2);
+  const elapsed=e.mineTime;f.issue(e,{kind:'mine',node:f.node,gatherCommand:'gather'});
+  assert.equal(e.mineTime,elapsed);assert.equal(e.order.phase,'harvest');assert.equal(f.node.harvester,e);
+  f.workers.update(e,HARVEST.mineralTime/2);assert.equal(e.carry,5);assert.equal(f.node.amount,1795);
+});
+check('Repeating Smart/right-click on the same field resets extraction as observed natively',()=>{
+  const f=fixture(),e=f.scv();f.issue(e,{kind:'mine',node:f.node});f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime/2);
+  f.issue(e,{kind:'mine',node:f.node,gatherCommand:'smart'});assert.equal(e.mineTime,0);assert.equal(e.order.phase,'out');assert.equal(f.node.harvester,null);
+  f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime/2);assert.equal(e.carry,0);assert.equal(f.node.amount,1800);
+  f.workers.update(e,HARVEST.mineralTime/2);assert.equal(e.carry,5);
+});
+check('Gathering a different field releases the old slot and cannot transfer unfinished progress',()=>{
+  const f=fixture(),e=f.scv();f.issue(e,{kind:'mine',node:f.node});f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime/2);
+  f.issue(e,{kind:'mine',node:f.next,gatherCommand:'gather'});assert.equal(e.mineTime,0);assert.equal(f.node.harvester,null);
+  assert.equal(e.order.node,f.next);assert.equal(e.order.phase,'out');assert.equal(e.carry,0);
+});
+check('Without any drop-off the SCV still extracts, finishes its wait, and retains cargo and return intent',()=>{
+  const f=fixture(),e=f.scv();f.all.splice(f.all.indexOf(f.home),1);f.issue(e,{kind:'mine',node:f.node});
+  f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime);assert.equal(e.carry,5);assert.equal(f.node.amount,1795);
+  assert.equal(e.order.phase,'waitReturn');assert.equal(f.workers.deferring(e),true);f.workers.update(e,HARVEST.returnDelay);
+  assert.equal(e.order.phase,'home');f.workers.update(e,100);assert.equal(e.order.phase,'home');assert.equal(e.carry,5);assert.equal(f.node.amount,1795);assert.equal(f.payments.length,0);
+});
+check('A newly available grounded drop-off resumes the previously suspended cargo return',()=>{
+  const f=fixture(),e=f.scv();f.home.flying=true;f.issue(e,{kind:'mine',node:f.node});f.workers.update(e,0);
+  f.workers.update(e,HARVEST.mineralTime);f.workers.update(e,HARVEST.returnDelay);assert.equal(e.carry,5);
+  f.home.flying=false;assert.equal(f.workers.update(e,0),'resumed');assert.equal(e.order.phase,'out');assert.equal(e.order.node,f.node);
+  assert.equal(e.carry,0);assert.equal(e.deliveredTrips,1);assert.deepEqual(f.payments,[[0,-5,0]]);
+});
+check('Drop-off loss during the uninterruptible wait does not advance queued movement early',()=>{
+  const f=fixture(),e=f.scv();f.issue(e,{kind:'mine',node:f.node});f.workers.update(e,0);f.workers.update(e,HARVEST.mineralTime);
+  f.home.hp=0;e.orders.push({kind:'move',x:300,y:0});f.workers.update(e,HARVEST.returnDelay/2);
+  assert.equal(e.order.phase,'waitReturn');assert.equal(f.workers.deferring(e),true);
+  assert.equal(f.workers.update(e,HARVEST.returnDelay/2),'promoted');assert.equal(e.order.kind,'move');assert.equal(e.carry,5);assert.equal(f.payments.length,0);
+});
 console.log(`${checks} worker recovery checks passed`);

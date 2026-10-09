@@ -16,7 +16,7 @@ with sync_playwright() as p:
  const threat=g.spawn('marine',0,1400,1000);g.stop(threat,true);threat.weapon={...threat.weapon,damage:0};threat.hp=threat.maxhp=10000;
  g.invalidateNav();g.update(0);g.opponent.update();
  check('Enemy defense uses one shared batch and unique reserved destinations',Number.isInteger(army[0].order?.batch)&&army.every(u=>u.order?.kind==='attackMove'&&u.order.batch===army[0].order.batch&&u.order.arrival)&&new Set(army.map(u=>u.order.arrival.x+','+u.order.arrival.y)).size===army.length);
- check('Enemy tactical orders preserve the visible threat as shared goal',army.every(u=>(u.order.groupGoal||u.order).x===threat.x&&(u.order.groupGoal||u.order).y===threat.y),{goal:{x:threat.x,y:threat.y},orders:army.map(u=>({x:u.order.x,y:u.order.y,formation:u.order.formation,goal:u.order.groupGoal}))});
+ check('Enemy tactical orders preserve the visible threat as shared goal',army.every(u=>(u.order.groupGoal||u.order).x===threat.x&&(u.order.groupGoal||u.order).y===threat.y));
  tick(50);const accepted=army.map(u=>u.order?.acceptedLoop);g.opponent.update();
  check('Unchanged defense policy keeps accepted orders and acquisition intact',army.every((u,i)=>u.order?.acceptedLoop===accepted[i])&&army.some(u=>u.combatTarget===threat||u.windup?.target===threat||u.visualShotSerial>0));
  reset();g.spawn('core',0,700,1100);g.spawn('core',1,1900,400);const refinery=g.spawn('refinery',0,1000,1100);refinery.geyser={amount:2250};
@@ -49,6 +49,24 @@ with sync_playwright() as p:
  check('Idle SCV records damage origin before deciding to flee',idle.hp<10000&&idle.lastDamageSourcePosition.x===1340);
  shooter.x=500;shooter.y=500;g.update(0);tick(1);
  check('SCV flee uses the recorded origin when the attacker disappears into fog',idle.order?.kind==='flee'&&idle.order.x<1200&&idle.order.y===1100);
+ const extractionFixture=()=>{
+  reset();g.spawn('core',0,630,1100);g.spawn('core',1,1900,400);
+  const node={x:920,y:1100,r:21,placeWidth:2,placeHeight:1,footprint:[[-28,-14],[-28,14],[28,14],[28,-14]],amount:1800,capacity:1800};g.minerals.push(node);
+  const w=g.spawn('worker',0,820,1100);g.invalidateNav();g.issue(w,{kind:'mine',node});let limit=100;while(w.order?.phase!=='harvest'&&limit--)tick(1);if(w.order?.phase!=='harvest')throw Error('Extraction fixture never arrived');return{w,node};
+ };
+ for(const smart of [false,true]){
+  const {w,node}=extractionFixture();tick(22);const progress=w.mineTime;g.selected=[w];g.running=true;g.command(node.x,node.y,false,false,smart?null:'gather',{node});g.running=false;
+  check((smart?'Smart':'Gather')+' source survives the real command dispatcher',w.order.gatherCommand===(smart?'smart':'gather'));
+  check((smart?'Smart restarts':'Gather preserves')+' same-field extraction',smart?w.mineTime===0&&w.order.phase==='out':w.mineTime===progress&&w.order.phase==='harvest'&&node.harvester===w);
+  tick(23);check((smart?'Restarted Smart has not earned':'Repeated Gather earns')+' cargo at the original extraction boundary',smart?w.carry===0:w.carry===5&&w.order.phase==='waitReturn');
+ }
+ let {w:orphan,node}=extractionFixture();const home=g.entities.find(e=>e.type==='core'&&e.team===0);g.spawn('relay',0,500,1300);home.hp=0;tick(45);
+ check('Removing the only drop-off does not cancel extraction or earned cargo',orphan.carry===5&&orphan.order?.phase==='waitReturn'&&node.amount===1795);
+ tick(8);const waiting={x:orphan.x,y:orphan.y};tick(20);
+ check('A loaded orphan waits with its Gather intent instead of discarding cargo',orphan.carry===5&&orphan.order?.kind==='mine'&&orphan.order.phase==='home'&&orphan.x===waiting.x&&orphan.y===waiting.y);
+ g.spawn('core',0,630,1100);g.invalidateNav();tick(1);
+ check('A new grounded drop-off resumes the pending cargo trip',orphan.carry===5&&orphan.x<waiting.x);
+ tick(150);check('Recovered orphan deposits and resumes its mineral cycle',orphan.deliveredTrips>=1&&g.money>=5&&orphan.order?.kind==='mine');
  return out;}''')
  for r in results:print(('PASS' if r['pass'] else 'FAIL'),r['name'],json.dumps(r.get('detail')),flush=True)
  assert all(r['pass'] for r in results),results
