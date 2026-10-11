@@ -13,16 +13,34 @@ This pass compares the browser simulation directly against the native SC2 engine
 
 Native binaries, maps and raw traces stay outside the repository under the research license recorded in [native-client-license-boundary.md](native-client-license-boundary.md). The client is the historical 4.10.0.75689 Linux build, not the current retail patch.
 
-## Native rules fitted so far
+## Native rules fitted
+
+Every row below replaced an earlier guess that a native trace contradicted. The constants live in `ARRIVAL`, `COLLISION`, `PUSH_RETURN` and `STEER` ([movement.js](../dist/movement.js)) and in `SCAN_PERIOD`, `HELP` and `RANDOM_DELAY` ([combat.js](../dist/combat.js)).
+
+### Unit AI
 
 | Behavior | Native evidence | Browser rule |
 | --- | --- | --- |
-| Re-acquisition after a kill | Across 16 kill phases, the next target was acquired 0–11 loops after the death. The remaining weapon cooldown at that moment averaged 1.09 loops (range 0–2.45), even with another enemy already in range. | A unit with no target searches only when its cooldown is ≤ 2.5 loops, on a per-unit 3-loop schedule. Browser average: 1.01 loops (range 0–2.2). |
+| Target scans | Acquisitions land on a fixed per-unit phase that repeats every 8 loops. The phase follows the unit's tag (`tag >> 18`). | Each unit searches on its own 8-loop slot (`scanDue`). The replay copies the native slot. |
+| Re-acquisition after a kill | Across 16 kill phases (`acq_delay_*`), the unit stays in its attack until the weapon backswing ends: 12 loops for a Marine, 8 for a Siege Tank. Its next search shows one loop later, whatever the cooldown. | After a target is lost, the unit stands until its backswing ends, then searches at once. It resumes its order only if that search finds nothing. |
 | Weapon cadence | Cooldown reset values vary by about −1…+2 loops. | Catalog `RandomDelayMin/Max` (−0.0625…+0.125 game s) is applied to each shot from a seeded generator. |
-| Automatic target choice | With the observer spawned last, a farther Marine beats a closer SCV, whether the SCV is held or idle. Closer Hellion, Marauder, Reaper and Marine targets each beat a farther Marine, and a closer SCV beats a farther SCV. An SCV beats a closer Supply Depot. | Ranking: AttackTargetPriority first, then combat unit over worker or unarmed unit, then distance. 11 of 13 browser choices match; the other two differ only by the first-scan delay of a freshly spawned unit. |
-| Command timing | A raw command surfaces as an order two loops later in the lockstep setup. Movement starts on the next loop. | The replay aligns to native order appearance. Single-player timing follows the earlier one-loop measurement in [native-gameplay-observations.md](native-gameplay-observations.md). |
-| Spread-group arrival | Units stop near the click with a radius that grows as more units arrive: about 1.33 × unit radius × √(arrived + 1). The first units stop within about 0.55 of the click. Arrived units are shoved afterwards by later arrivals (mean 0.7–1.5 game units), which rounds the blob onto the click. Settled crowds overlap by up to 0.07 game units. | Arrival radius uses the envelope. Contact with an arrived squadmate must persist for 0.2 s before a mover settles. Arrived units are pushed like idle units. |
-| Idle allies | Idle units part around a moving squad on both sides and stay near their column. The movers deflect around them. | Plain contact push with the idle ally taking 30% of the overlap (fitted). The earlier sideways-slide rule is off; native data contradicted it. |
+| Automatic target choice | With the observer spawned last, a farther Marine beats a closer SCV, whether the SCV is held or idle. Closer Hellion, Marauder, Reaper and Marine targets each beat a farther Marine, and a closer SCV beats a farther SCV. An SCV beats a closer Supply Depot. | Ranking: AttackTargetPriority first, then combat unit over worker or unarmed unit, then distance. |
+| Help calls | Allies within 4 of a damaged unit acquire its attacker. The 2-second call period applies per victim and attacker: a second attacker one loop later still calls (`f_reaper_kite`). When two calls land in one loop, each helper takes the nearer attacker (`f_tank_marine_amove`). | `HELP.perAttacker` and `HELP.nearest`. |
+| Leash | An idle unit chases until it is 21 plus its own diameter from where it started. The walk back is a plain Move that ignores enemies. | Leash radius 21 + diameter; the return is a Move order. |
+| Slow chaser | A chaser slower than its target drops it once their centers are more than 22 apart, on its scan slot (30 lanes, three unit types, three orders). | See the `e_` table below. |
+| Command timing | A raw command surfaces as an order two loops later in the lockstep setup. Movement starts on the next loop. | The replay aligns to native order appearance. Single-player timing follows the one-loop measurement in [native-gameplay-observations.md](native-gameplay-observations.md). |
+
+### Movement
+
+| Behavior | Native evidence | Browser rule |
+| --- | --- | --- |
+| Group arrival | Every mover stops at a whole multiple k of its own radius from the click: 2, 3, 4, 6, 8, then roughly 0.5q + 5.3. k is set by q, the area of squadmates already resting on the point in units of the mover's own area (`g_` and `h_` probes; k = 5 and 7 never occur). Walking squadmates count. Idle units and units outside the command never count. | `stopMultiple(q)` and `stopArea()`. A unit carried onto the point counts only after resting there 12 loops. |
+| Contact gap | Settled crowds sit r1 + r2 − 1/16 apart. | `COLLISION.gap` = −1/16 game unit. |
+| Idle allies | Idle units part around a moving squad and are carried along. A unit pushed more than 8 radii walks straight back to the exact point it was pushed from. A smaller push is checked every 32 loops and walked back past 4/3 radius. | `pushHome` memory and `pushReturn()`. Units of the moving command are never pushed home. Hold Position units are never pushed. |
+| Blocked ranged attackers | An attack-moving unit behind a firing ally slides to the right along it until it has a firing line. The army opens into an arc. | `slide()` with `ENGAGE.contact` and `ENGAGE.makeWay`. Predicted avoidance is off for units that are fighting. |
+| Shift waypoints | Queued points are walked through at full speed; the unit never brakes on a waypoint. | A point order with a queued point successor completes within one step. |
+| Turning at speed | An SCV running west and ordered east moves east at full speed on the next loop. Its facing then turns at the turn rate. | The velocity heading follows steering at once; only speed ramps (`STEER.instant`). |
+| Pathing radius | Pathing uses `InnerRadius`, smaller than the collision radius for Marauders (0.375) and Hellions (0.5). | `terrainRadius()` uses the inner radius. |
 
 ## Results
 

@@ -1,5 +1,7 @@
 # SC2 group-feel pass
 
+> **Superseded in part.** This pass predates the native-client comparison. Where the two disagree, [native-feel-fit.md](native-feel-fit.md) is authoritative. Native traces replaced these rules here: arrival is a whole multiple of the mover's radius set by the squad area on the point (not chaining on touch); idle allies are carried and walk back (not a sideways yield); the leash is 21 + the unit's own diameter; target scans run on an 8-loop per-unit slot.
+
 This pass played the movement lab with a deterministic top-down filmstrip harness and compared it against researched SC2 behavior. It fixed the gaps that most broke the feel of moving and fighting with an army.
 
 ## Research baseline
