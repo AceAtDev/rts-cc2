@@ -8,7 +8,7 @@ import json, os, shutil, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-REPLAY = r'''async ([trace,tuning])=>{if(tuning){const mv=await import('./movement.js');for(const [k,v] of Object.entries(tuning)){const [o,f]=k.split('.');mv[o][f]=v;}}const g=__game,S=28,CX=44,CY=42,BX=1050,BY=700;
+REPLAY = r'''async ([trace,tuning])=>{if(tuning){const mv=await import('./movement.js');for(const [k,v] of Object.entries(tuning)){if(k==='FORCE.targets')continue;const [o,f]=k.split('.');mv[o][f]=v;}}const g=__game,S=28,CX=44,CY=42,BX=1050,BY=700;
 const toB=(x,y)=>({x:(x-CX)*S+BX,y:(CY-y)*S+BY}),toN=e=>[(e.x-BX)/S+CX,CY-(e.y-BY)/S];
 g.reset();g.start();g.running=false;g.aiEnabled=false;g.entities.splice(0);g.minerals.splice(0);g.rocks.splice(0);g.selected=[];g.invalidateNav();
 const TYPE={Marine:'marine',SCV:'worker',Marauder:'marauder',Reaper:'reaper',Hellion:'hellion',SiegeTank:'tank',SupplyDepot:'relay'};
@@ -40,7 +40,11 @@ const snap=()=>{const units={};for(const [tag,e] of byTag){if(e.hp<=0||e.buildin
   units[tag]={x,y,r:e.r/S,facing:-e.angle,hp:e.hp,cd:(e.cooldown||0)*22.4,target:e.combatTarget?[...byTag].find(([,v])=>v===e.combatTarget)?.[0]??null:null,
    orders:e.order?[[e.order.kind]]:[],moving:Math.hypot(e.vx,e.vy)/S}}return units};
 const loops=trace.frames.length-1;
-for(let l=0;l<=loops;l++){frames.push({loop:l,units:snap()});if(l===loops)break;for(const c of byLoop.get(l)||[])fire(c);g.update(dt);}
+for(let l=0;l<=loops;l++){frames.push({loop:l,units:snap()});if(l===loops)break;for(const c of byLoop.get(l)||[])fire(c);
+ // Diagnostic: FORCE.targets copies each native engaged target every loop,
+ // isolating approach/firing movement from acquisition differences.
+ if(tuning?.['FORCE.targets'])for(const [tag,e] of byTag){const n=trace.frames[l].units[tag],t=n?.target&&byTag.get(String(n.target));if(e.hp>0&&t&&t.hp>0)e.combatTarget=t;}
+ g.update(dt);}
 return {fixture:trace.fixture,engine:'browser',units:trace.units,commands:trace.commands,frames};}'''
 
 def align_commands(trace):

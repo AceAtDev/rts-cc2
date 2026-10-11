@@ -73,34 +73,35 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     }
     return null;
   }
-  const firing=b=>b.hp>0&&!b.building&&!b.flying&&!b.loadedIn&&!b.insideRefinery&&length(b.vx||0,b.vy||0)<3&&(b.combatTarget||b.hold||b.sieged);
-  function rangeSlot(e,target,reach,dt){
-    const radius=reach-2,toward=Math.atan2(e.y-target.y,e.x-target.x);
-    const state=e.rangeSlot?.target===target?e.rangeSlot:(e.rangeSlot={target,angle:null,wait:0,base:toward});
-    state.wait=Math.max(0,state.wait-dt);
-    const allies=entities().filter(b=>b!==e&&b.team===e.team&&firing(b)&&dist(b,target)<=reach+2*(e.r+b.r)+e.speed*.5);
-    const occupied=q=>allies.some(b=>dist(q,b)<e.r+b.r+.5)||entities().some(b=>b!==e&&b.team===e.team&&b.rangeSlot?.target===target&&
-      b.rangeSlot.angle!==null&&dist(q,{x:target.x+Math.cos(b.rangeSlot.angle)*b.rangeSlot.radius,y:target.y+Math.sin(b.rangeSlot.angle)*b.rangeSlot.radius})<e.r+b.r+.5);
-    // Only units actually walled off by firing allies take a slot; a clear
-    // lane keeps the ordinary straight approach.
-    const blocked=allies.some(b=>{const bx=b.x-e.x,by=b.y-e.y,tx=target.x-e.x,ty=target.y-e.y,tl=length(tx,ty)||1;
-      const forward=(bx*tx+by*ty)/tl,cross=Math.abs(bx*ty-by*tx)/tl;return forward>0&&forward<dist(e,target)-reach+e.r+b.r+e.speed*.5&&cross<e.r+b.r+.5;});
-    if(state.angle!==null){
-      const q={x:target.x+Math.cos(state.angle)*state.radius,y:target.y+Math.sin(state.angle)*state.radius};
-      if(!allies.some(b=>dist(q,b)<e.r+b.r+.5)&&openPoint(q,terrainRadius(e)))return q;
-      state.angle=null;
+  // Units firing from inside weapon range (and Hold/Siege) never yield.
+  const shooting=b=>b.hp>0&&!b.building&&!b.flying&&!b.loadedIn&&!b.insideRefinery&&(b.firingHold||b.hold||b.sieged);
+  // Native contact slide (4.10 a_col3_* probes): an approaching attacker
+  // pressed against a firing ally, or against one not making way along its
+  // heading, keeps full speed along that body's rim instead of stalling
+  // (native approachers stall 4% of loops). The rim side is kept for the
+  // whole contact episode (95% persistent per loop natively) and starts away
+  // from the attacker's own crowd (72-84% outward); dead-on, with no crowd
+  // to leave, the turn is right/clockwise as in all four a_col3 headings.
+  function slide(e,ux,uy,goal){
+    const near=neighbors(e).filter(b=>b!==e&&b.team===e.team&&b.hp>0&&!b.flying&&dist(e,b)<e.r+b.r+ENGAGE.contact&&
+      (shooting(b)||((b.vx||0)*ux+(b.vy||0)*uy)<e.speed*ENGAGE.makeWay));
+    if(e.slideGoal!==goal){e.slideGoal=goal;e.slideSide=0;}
+    if(!near.length){e.slideSide=0;return{x:ux,y:uy};}
+    for(let pass=0;pass<4;pass++){
+      let hit=null,depth=1e-6;
+      for(const b of near){const into=(ux*(b.x-e.x)+uy*(b.y-e.y))/(dist(e,b)||1);if(into>depth){depth=into;hit=b;}}
+      if(!hit)break;
+      const dd=dist(e,hit)||1,nx=(hit.x-e.x)/dd,ny=(hit.y-e.y)/dd;
+      if(!e.slideSide){
+        let cx=0,cy=0,k=0,t=ny*ux-nx*uy;
+        for(const b of neighbors(e))if(b!==e&&b.team===e.team&&b.hp>0&&dist(e,b)<ENGAGE.crowd){cx+=b.x;cy+=b.y;k++;}
+        if(k){cx=cx/k-e.x;cy=cy/k-e.y;t=(cy*ux-cx*uy)/(length(cx,cy)||1);}
+        e.slideSide=Math.abs(t)<ENGAGE.tie?1:-Math.sign(t);
+      }
+      // Browser y points down, so a native clockwise turn is +90 degrees here.
+      ux=-ny*e.slideSide;uy=nx*e.slideSide;
     }
-    if(!blocked||state.wait>0)return null;
-    state.wait=.15;
-    const step=(2*e.r+1)/radius;
-    // Spill around the flanks, but never wrap behind the target: a unit
-    // beyond the side of the fight is better off joining the next rank.
-    for(let i=1;i<Math.ceil(RANGE_SLOT_SPREAD/step);i++)for(const side of [1,-1]){
-      const angle=state.base+side*i*step,q={x:target.x+Math.cos(angle)*radius,y:target.y+Math.sin(angle)*radius};
-      if(!openPoint(q,terrainRadius(e))||occupied(q))continue;
-      state.angle=angle;state.radius=radius;return q;
-    }
-    return null;
+    return{x:ux,y:uy};
   }
   function move(e,point,dt,stopAt=3) {
     if(e.sieged||e.transform||e.loadedIn)return false;
@@ -148,14 +149,8 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
         stopAt=0;
       }
     }else e.pursuitState=null;
-    // Ranged approach: stationary firing allies are obstacles, so units behind
-    // them spill around the ends to an open spot on their own range arc. This
-    // is what turns an attack-moving ball into SC2's natural concave.
+    // Ranged approach: blocked attackers slide along allies (see slide()).
     const rangedPursuit=point===e.combatTarget&&point.hp>0&&!point.footprint&&!point.flying&&!combatPursuit&&stopAt>e.r+point.r;
-    if(rangedPursuit){
-      const slot=rangeSlot(e,point,stopAt,dt);
-      if(slot){p=slot;stopAt=0;}
-    }else e.rangeSlot=null;
     const exactPoint=stopAt===0&&!e.flying&&point===e.order&&['move','attackMove'].includes(e.order?.kind);
     if(!exactPoint)e.pointBrake=null;
     if(p.footprint&&stopAt>5){
@@ -264,6 +259,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     if(e.detour&&!e.flying)dest=e.detour;
     let dx=dest.x-e.x,dy=dest.y-e.y,len=length(dx,dy);
     if(len<.001){e.nav=null;return false;}
+    if(rangedPursuit&&!e.flying){const q=slide(e,dx/len,dy/len,point);dx=q.x*len;dy=q.y*len;}
     if(e.turnBeforeMove&&!e.flying){
       // A new command/target begins stationary alignment. Once that intent is
       // underway, local steering uses the moving turn rate instead of stopping
@@ -321,7 +317,9 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     // longitudinal braking at forward acceleration, not lateral acceleration.
     // The half-step exit margin is the inclusive discrete stopping ramp. It
     // prevents repeated acceleration/deceleration switches near an endpoint.
-    const remaining=Math.max(0,d-stopAt),limit=remaining/dt;
+    // Native ranged approach does not trim its last step to the range edge:
+    // the unit stops on the first loop that begins inside weapon range.
+    const remaining=Math.max(0,d-stopAt),limit=rangedPursuit?Infinity:remaining/dt;
     const oldSpeed=length(e.vx,e.vy),deceleration=e.deceleration>0?e.deceleration:e.acceleration||100000;
     let pointBraking=false;
     if(exactPoint){
@@ -366,8 +364,8 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       const sameBatch=a.arrivalBatch&&a.arrivalBatch===b.arrivalBatch;
       const movingA=length(a.vx,a.vy)>3,movingB=length(b.vx,b.vy)>3;
       const enemy=a.team!==b.team;
-      const anchorA=a.hold||a.sieged||a.transform||(!movingA&&movingB&&(enemy||a.combatTarget));
-      const anchorB=b.hold||b.sieged||b.transform||(!movingB&&movingA&&(enemy||b.combatTarget));
+      const anchorA=a.hold||a.sieged||a.transform||(!movingA&&movingB&&(enemy||a.firingHold));
+      const anchorB=b.hold||b.sieged||b.transform||(!movingB&&movingA&&(enemy||b.firingHold));
       if(anchorA&&anchorB)continue;
       let wa=anchorA?0:anchorB?1:!movingA&&movingB?(sameBatch?ARRIVAL.idleShare:YIELD.share):!movingB&&movingA?(sameBatch?1-ARRIVAL.idleShare:1-YIELD.share):.5;
       // AlliedPushPriority units (Siege Tank) shove even moving allies aside.
@@ -417,8 +415,11 @@ export const COMPACT_FORMATION_EXTENT=6*SCALE;
 // spread: stop radius = spread * unit radius * sqrt(arrived + 1);
 // idleShare: overlap share an arrived squadmate takes when a mover hits it.
 export const ARRIVAL={contact:3,contactTime:.2,stall:.5,spread:1.33,idleShare:.6};
-// Largest angle around a target a blocked ranged unit walks for a firing spot.
-export const RANGE_SLOT_SPREAD=Math.PI*.4;
+// Blocked ranged approach (slide()): contact = world-unit slack that counts as
+// touching; makeWay = fraction of our speed an ally must move along our
+// heading to not block; crowd = radius (world) of the crowd we peel away
+// from; tie = lateral share below which the side is a tie (turn right).
+export const ENGAGE={contact:4,makeWay:.5,crowd:56,tie:.05};
 // Movement loops an idle ally keeps its chosen sideways yield direction.
 // Idle-ally yielding: lateral (sticky sideways slide) or plain contact push;
 // share is the overlap fraction an idle ally takes from a mover; preStep

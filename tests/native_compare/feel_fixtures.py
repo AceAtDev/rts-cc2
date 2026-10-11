@@ -80,6 +80,26 @@ FIXTURES = {
                           commands=[(0, 'patrol', 'm', (48, 42))]),
 }
 
+# --- engagement geometry probes (blocked ranged approach) -------------------
+# Three Marines in a file attack-move at one held Marine: the second and third
+# are blocked by the firing leader. Four headings expose the side preference.
+FIXTURES['a_col3_e'] = dict(loops=110, units=[('m', 'Marine', 1, line(36, 42, 3, -.8, 0)), ('e', 'Marine', 2, [[46, 42]], 'hold')],
+                            commands=[(0, 'attack', 'm', (56, 42))])
+FIXTURES['a_col3_w'] = dict(loops=110, units=[('m', 'Marine', 1, line(52, 42, 3, .8, 0)), ('e', 'Marine', 2, [[42, 42]], 'hold')],
+                            commands=[(0, 'attack', 'm', (32, 42))])
+FIXTURES['a_col3_n'] = dict(loops=110, units=[('m', 'Marine', 1, line(44, 36, 3, 0, -.8)), ('e', 'Marine', 2, [[44, 46]], 'hold')],
+                            commands=[(0, 'attack', 'm', (44, 56))])
+FIXTURES['a_col3_s'] = dict(loops=110, units=[('m', 'Marine', 1, line(44, 48, 3, 0, .8)), ('e', 'Marine', 2, [[44, 38]], 'hold')],
+                            commands=[(0, 'attack', 'm', (44, 28))])
+# A held allied wall (not firing: target out of its range) between one
+# attack-moving Marine and a held enemy: how it walks around to a firing spot.
+FIXTURES['a_wall_amove'] = dict(loops=140, units=[('w', 'Marine', 1, line(40, 40.4, 5, 0, .8), 'hold'),
+                                                  ('m', 'Marine', 1, [[37, 42]]), ('e', 'Marine', 2, [[46, 42]], 'hold')],
+                                commands=[(0, 'attack', 'm', (56, 42))])
+FIXTURES['a_wall_amove_off'] = dict(loops=140, units=[('w', 'Marine', 1, line(40, 40.4, 5, 0, .8), 'hold'),
+                                                      ('m', 'Marine', 1, [[37, 42.5]]), ('e', 'Marine', 2, [[46, 42]], 'hold')],
+                                    commands=[(0, 'attack', 'm', (56, 42))])
+
 # Acquisition timing: kill the current target at different loop phases.
 for k in range(16):
     FIXTURES[f'acq_delay_{k:02d}'] = dict(loops=70, units=[('m', 'Marine', 1, [[40, 42]]), ('a', 'SCV', 2, [[43, 42]], 'hold'),
