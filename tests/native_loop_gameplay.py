@@ -91,9 +91,10 @@ with sync_playwright() as playwright:
       tick(Math.max(0,Math.floor(marine.weapon.period/dt)-3));
       const heldPeriod=target.hp===firstHp;
       const resumed=until(()=>target.hp<firstHp,10), interval=g.time-firstShotTime;
+      // Catalog weapon random delay (-0.0625..0.125 game s) bounds the cadence.
       check('Repeated Marine commands cannot fire twice inside the weapon period',
-        heldPeriod&&resumed.met&&interval>=marine.weapon.period-1e-8&&
-        interval<=marine.weapon.period+2*dt+1e-8,
+        heldPeriod&&resumed.met&&interval>=marine.weapon.period-.0625/1.4-1e-8&&
+        interval<=marine.weapon.period+.125/1.4+2*dt+1e-8,
         {interval,period:marine.weapon.period,hp:target.hp});
 
       reset();worker=g.spawn('worker',0,700,1040);target=dummy('marine',722,1040);
