@@ -19,7 +19,9 @@ export const PROFILES = {
   marine: profile(2.25,.375,1000,46.0625,999.8437,['Light','Biological'],
     {range:5,scan:5.5,period:.86083984375,point:.05,backswing:.75,damage:6,air:true}),
   marauder: profile(2.25,.5625,1000,69.125,999.8437,['Armored','Biological'],
-    {range:6,scan:6.5,period:1.5,point:0,backswing:0,damage:10,bonus:{Armored:10},missileSpeed:20*SCALE*FASTER}),
+    {range:6,scan:6.5,period:1.5,point:0,backswing:0,damage:10,bonus:{Armored:10},missileSpeed:20*SCALE*FASTER,
+    // RangeSlop hold after a shot (combat.js; native e_drop_marauder*).
+    holdSlop:true}),
   // P38ScytheGuassPistolBurst lists a 0.122 s second period, but native
   // c_first_Reaper/c_idle_acq_Reaper always land the second hit one loop
   // after the first.
@@ -31,7 +33,9 @@ export const PROFILES = {
     // 90mmCannons Arc 360 (balancemulti): fires without waiting for its
     // FreeRotate (720 deg/s) turret; native c_first_SiegeTank fired 3 loops
     // after acquiring a target 166 degrees behind the body.
-    {range:7,scan:7.5,period:1.0400390625,point:.167,backswing:.5,damage:15,bonus:{Armored:10},turret:true,turretRate:720,arc:360}),
+    {range:7,scan:7.5,period:1.0400390625,point:.167,backswing:.5,damage:15,bonus:{Armored:10},turret:true,turretRate:720,arc:360,
+    // RangeSlop hold after a shot (native e_drop_tank: left at 8.05, range 7).
+    holdSlop:true}),
     turnBeforeMove:true,stationaryTurnRate:720*Math.PI/180*FASTER,alliedPush:true},
 };
 export const SIEGE_WEAPON = {range:13*SCALE,scan:13*SCALE,minimum:2*SCALE,

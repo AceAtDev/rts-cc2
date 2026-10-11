@@ -16,7 +16,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
   // where it acquired: Marine/Reaper (r .375) drop past 21.75 (seen at
   // 21.76-21.88, never at 21.52-21.66), Hellion (r .625) past 22.25 (seen at
   // 22.28-22.39, never at 22.01-22.13).
-  const helpRadius=4*SCALE,helpPeriod=2/FASTER,leashRadius=21*SCALE;
+  const helpRadius=4*SCALE,helpPeriod=2/FASTER,leashRadius=21*SCALE,dropDistance=22*SCALE;
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   // CWeaponLegacy RandomDelayMin/Max (-0.0625..0.125 game s) lengthen or
   // shorten each cooldown; a seeded generator keeps simulations reproducible.
@@ -33,7 +33,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
   // preferred over workers and unarmed units before distance is considered.
   const threat=t=>armed(t)&&t.type!=='worker'&&!t.building;
   const rank=t=>priority(t)*2+(threat(t)?1:0);
-  function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.combatAnchor=null;e.combatReturning=false;e.attackTargetMemory=null;e.attackLastSeen=null;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;idleThisLoop.delete(e);}
+  function cancel(e) {e.windup=null;e.engaged=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.combatAnchor=null;e.combatReturning=false;e.attackTargetMemory=null;e.attackLastSeen=null;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;idleThisLoop.delete(e);}
   function acceptOrder(e) {
     const o=e.order;
     // Capture intent at input acceptance, before a simulation loop can hide it.
@@ -84,7 +84,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     e.visualShotSerial=(e.visualShotSerial||0)+1;e.visualShotAt=clock();
     const jitter=w.randomDelay===false?0:(RANDOM_DELAY[0]+random()*(RANDOM_DELAY[1]-RANDOM_DELAY[0]))/FASTER;
     e.cooldown=Math.max(0,w.period/(e.stim?1.5:1)+jitter);e.backswing=w.backswing/(e.stim?1.5:1);
-    e.lastAttackAt=clock();e.lastBackswing=e.backswing;
+    e.lastAttackAt=clock();e.lastBackswing=e.backswing;e.engaged=t;
     const point={x:t.x,y:t.y};
     // Native c_first_Marauder/c_stop_hit_*: impact lands ceil(d/1.25)+1 loops
     // after launch, so a missile starts travelling one loop after creation.
@@ -163,6 +163,9 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     }
     if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;e.combatResponseTarget=null;e.windup=null;e.consumedCombatHelp=e.combatHelp;return false;}
     let target=manual?o.target:e.combatTarget;
+    // e.engaged: the target of the last shot, held by the weapon (see the
+    // RangeSlop hold below) until the unit moves or changes target.
+    if(e.engaged&&e.engaged!==e.combatTarget&&e.engaged!==o?.target)e.engaged=null;
     const windupSlop=t=>e.windup?.target===t?(w.rangeSlop||0):0;
     const responseRange=Math.max(w.scan,w.range,e.vision||0);
     // Native AttackMove/Patrol retain a team-visible acquired target beyond
@@ -198,7 +201,6 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     if(immediate&&idleAuto&&e.combatAnchor)rangeOnly=true;
     if(!manual&&(immediate||scanDue(e,Math.round(clock()*22.4)))) {
       e.lostTargetScan=false;
-      let best=target;
       // Native c_switch_amove/_patrol/_idle and c_leash_chase: a unit chasing
       // an automatic target out of weapon range switches, on its scan slot, to
       // an equally ranked opponent inside scan range (5.25 from the path,
@@ -207,12 +209,30 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
       // current target is still inside scan range only in-weapon-range
       // opponents replace it (keeps the measured crowd fights unchanged).
       const pursuing=target&&!inRange(e,target,w,windupSlop(target));
-      const lost=pursuing&&surface(e,target).distance-e.r>Math.max(w.scan,w.range);
-      for(const t of entities())if(valid(e,t,w)&&surface(e,t).distance-e.r<=Math.max(w.scan,w.range)&&surface(e,t).distance-e.r>=w.minimum) {
-        if(rangeOnly&&!inRange(e,t,w))continue;
-        const closer=!best||surface(e,t).distance<surface(e,best).distance;
+      // A native slot scan is decided one loop before the browser scan runs
+      // (its result shows a loop earlier and the unit acts a loop later),
+      // from everyone's positions after that loop's movement: the positions
+      // at the start of this browser loop. Native e_drop_amove m10: a
+      // Marauder walking away from an approaching Hellion first acquires it
+      // at 5.66 after missing it at 6.66 (scan range 6.5); patrol_engage: a
+      // Marine acquires an SCV 5.49 away on its own post-move position.
+      const at=t=>immediate||t.px===undefined?t:{...t,x:t.px,y:t.py};
+      const gap=t=>surface(e,at(t)).distance-e.r;
+      const reach=t=>gap(t)<=w.range&&(!w.minimum||gap(t)>=w.minimum);
+      // Native e_drop_* (Marine, Marauder, Siege Tank; Idle, Attack-move and
+      // Patrol) and c_leash_lanes_marauder: a pursuer slower than its target
+      // drops it on the first scan that finds the centers more than 22 apart
+      // (CGame AcquireLeashRadius 21, + 1): dropped at 21.97..22.4, kept at
+      // 20.9..22.02 (30 lanes). Idle units then walk home; Attack-move and
+      // Patrol resume their order.
+      if(pursuing&&dist(e,at(target))>dropDistance)target=null;
+      const lost=!!target&&pursuing&&gap(target)>Math.max(w.scan,w.range);
+      let best=target;
+      for(const t of entities())if(valid(e,t,w)&&gap(t)<=Math.max(w.scan,w.range)&&gap(t)>=w.minimum) {
+        if(rangeOnly&&!reach(t))continue;
+        const closer=!best||gap(t)<gap(best);
         if(!best||rank(t)>rank(best)||rank(t)===rank(best)&&
-          (!target&&closer||pursuing&&(lost&&closer||inRange(e,t,w)&&(!inRange(e,best,w)||closer))))best=t;
+          (!target&&closer||pursuing&&(lost&&closer||reach(t)&&(!reach(best)||closer))))best=t;
       }
       target=best;
     }
@@ -247,19 +267,44 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
       if(!o&&!e.hold&&!e.sieged&&Math.hypot(e.vx||0,e.vy||0)<1e-8)idleThisLoop.add(e);return false;
     }
     let arrived=false;
+    // Where the target is at the start of this loop, and where it ends it
+    // (a target updated later in the loop is projected by its velocity).
+    const startPos=t=>t.px===undefined?t:{...t,x:t.px,y:t.py};
+    const afterPos=t=>t.px===t.x&&t.py===t.y?{...t,x:t.x+(t.vx||0)*dt,y:t.y+(t.vy||0)*dt}:t;
     if(!inRange(e,target,w,windupSlop(target))) {
       e.windup=null;
       // Controlled native assistance assigns a target on the damage loop,
       // then begins approach on the following normal loop, in either order.
       if(e.combatHelpApproachAt===clock()){e.vx=e.vy=0;return true;}
-      if(e.backswing>0){e.vx=e.vy=0;return true;}
+      // Native e_leash_lanes(_marine/_hellion), c_leash_reaper, e_drop_marine:
+      // a chase after a shot starts one loop after the backswing ends (fire
+      // seen at frame F, first move between frames F+12 and F+13).
+      const sinceShot=clock()-(e.lastAttackAt??-Infinity);
+      if(e.backswing>0||e.lastBackswing>0&&sinceShot<e.lastBackswing+dt-1e-6){e.vx=e.vy=0;return true;}
+      // CWeapon RangeSlop (1): a Marauder (no backswing) that has fired keeps
+      // its weapon on the target, standing without firing, while the target
+      // is within range + 1 at the start of the loop. Native e_drop_marauder*,
+      // e_leash_lanes_marauder(_eq), c_leash_lanes_marauder (17 lanes): kept
+      // at 6.80..6.97, left at 7.04..7.24 (range 6). Marine, Reaper and
+      // Hellion chase at the backswing end at 5.52 (e_switch_amove), 5.09
+      // (c_leash_reaper) and 5.70 (e_leash_lanes_hellion), range 5. (Native
+      // e_manual_chase m00, a Marine re-ordered to Attack its target during
+      // its backswing, did wait until 6.15; that case is not modelled.)
+      if(w.holdSlop&&e.engaged===target&&!(e.hold||e.sieged||e.building)){
+        const first=e.lastBackswing>0&&sinceShot<e.lastBackswing+2*dt-1e-6;
+        if(inRange(e,first?afterPos(target):startPos(target),w,w.rangeSlop||0)){e.vx=e.vy=0;return true;}
+      }
+      e.engaged=null;
       if(e.hold||e.sieged||e.building){e.vx=e.vy=0;return true;}
       move(e,target,dt,w.range+e.r+target.r-1);
       // Native c_stop_hit_* and c_leash_chase3: the attack starts in the loop
       // whose movement brings the unit into range. Reaper/Marauder (point 0)
       // fire in that loop; Marine (.05) one loop and Hellion (.25) four loops
       // later.
-      if(!inRange(e,target,w))return true;
+      // Native e_patrol_retreat: the arrival check sees the target where it
+      // ends this loop (a target updated later in the loop is projected by
+      // its velocity); the Marine kept walking at 5.006 from a retreating SCV.
+      if(!inRange(e,afterPos(target),w))return true;
       arrived=true;
     }
     if(!arrived)e.vx=e.vy=0;

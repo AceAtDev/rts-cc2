@@ -8,7 +8,7 @@ import json, os, shutil, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-REPLAY = r'''async ([trace,tuning])=>{if(tuning){const mv=await import('./movement.js');for(const [k,v] of Object.entries(tuning)){if(k==='FORCE.targets')continue;const [o,f]=k.split('.');mv[o][f]=v;}}const g=__game,S=28,CX=44,CY=42,BX=1050,BY=700;
+REPLAY = r'''async ([trace,tuning])=>{if(tuning){const mv=await import('./movement.js'),cb=await import('./combat.js');for(const [k,v] of Object.entries(tuning)){if(k==='FORCE.targets')continue;const [o,f]=k.split('.');(o in mv?mv:cb)[o][f]=v;}}const g=__game,S=28,CX=44,CY=42,BX=1050,BY=700;
 const toB=(x,y)=>({x:(x-CX)*S+BX,y:(CY-y)*S+BY}),toN=e=>[(e.x-BX)/S+CX,CY-(e.y-BY)/S];
 g.reset();g.start();g.running=false;g.aiEnabled=false;g.revealAll=true;g.entities.splice(0);g.minerals.splice(0);g.rocks.splice(0);g.selected=[];g.invalidateNav();
 const TYPE={Marine:'marine',SCV:'worker',Marauder:'marauder',Reaper:'reaper',Hellion:'hellion',SiegeTank:'tank',SiegeTankSieged:'tank',SupplyDepot:'relay'};
@@ -33,6 +33,9 @@ else for(const [tag,e] of byTag){const fs=trace.frames;for(let i=1;i<fs.length;i
  if(!u||!v)break;if(u.target&&!v.target&&u.hp>=v.hp){e.scanPhase=(((-(fs[i].loop+1+T0))%8)+8)%8;break;}if(v.target)break;}}
 // State-matched start: copy each unit's native engaged target.
 for(const m of trace.units){const n=f0[m.tag],e=byTag.get(m.tag);if(n?.target&&byTag.has(String(n.target)))e.combatTarget=byTag.get(String(n.target));}
+// A plain Move (ability 16) already running at the first frame (an SCV that
+// was hit just before it and flees 5 away) continues in the browser.
+for(const m of trace.units){const n=f0[m.tag],e=byTag.get(m.tag),o=n?.orders?.[0];if(e&&o&&o[0]===16&&o[2]&&!o[1]){const p=toB(o[2][0],o[2][1]);g.issueGroup([{u:e,o:{kind:'move',x:p.x,y:p.y}}],p,false);}}
 const frames=[],dt=1/22.4;
 const fire=([loop,ability,who,where])=>{const units=(Array.isArray(who)?who:[who]).flatMap(k=>groups[k]||[]);
  if(ability==='kill'){for(const u of units)u.hp=0;return;}
