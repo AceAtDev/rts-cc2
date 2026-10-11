@@ -211,8 +211,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
         // (which are pushable idle units) for a moment before it settles.
         let touching=false;
         for(const b of neighbors(e)){
-          if(b===e||b.team!==e.team||b.hp<=0)continue;
-          if(b.arrivedBatch!==batch||length(b.vx||0,b.vy||0)>=3)continue;
+          if(b===e||b.team!==e.team||b.hp<=0||b.arrivedBatch!==batch||length(b.vx||0,b.vy||0)>=3)continue;
           if(dist(e,b)<=e.r+b.r+ARRIVAL.contact){touching=true;break;}
         }
         e.packedContact=touching?(e.packedContact||0)+dt:0;
@@ -391,7 +390,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       if(d<.001){dx=a.id%2?.01:-.01;dy=.007;d=length(dx,dy);}
       const sameBatch=a.arrivalBatch&&a.arrivalBatch===b.arrivalBatch;
       // An idle unit shoved this loop passes the shove down a chain (native
-      // b_push_idle_line: a Marine pushes three in a row at 15/16 speed).
+      // b_push_idle_line: a Marine carries three in a row at ~15/16 speed).
       const movingA=length(a.vx,a.vy)>3||a.pushedAt===frame,movingB=length(b.vx,b.vy)>3||b.pushedAt===frame;
       const enemy=a.team!==b.team;
       const anchorA=a.hold||a.sieged||a.transform||(!movingA&&movingB&&(enemy||a.combatTarget));
@@ -450,12 +449,9 @@ export const COMPACT_FORMATION_EXTENT=6*SCALE;
 export const ARRIVAL={contact:3,contactTime:.2,stall:.5,spread:1.33,idleShare:.6,free:1.2};
 // Largest angle around a target a blocked ranged unit walks for a firing spot.
 export const RANGE_SLOT_SPREAD=Math.PI*.4;
-// Movement loops an idle ally keeps its chosen sideways yield direction.
-// Idle-ally yielding: lateral (sticky sideways slide) or plain contact push;
-// share is the overlap fraction an idle ally takes from a mover; preStep
-// scales the anticipatory sidestep; memory is the sticky-side lifetime (loops).
 // Native 4.10 bodies in contact settle at r1+r2-1/16 game units (pushed idle
 // pairs, settled crowds, Marine/Tank/Hellion mixes all measure -0.0615..-0.0625).
+// combat: world-unit gap kept while either body fights (A-move concave tuning).
 export const COLLISION={gap:-.0625*SCALE,combat:.5};
 // Pushed idle units walk back (native idle_push, b_push_idle_*): a displacement
 // past `far` game units orders the return at once; otherwise a check every
@@ -464,6 +460,11 @@ export const PUSH_RETURN={far:3,near:.5,period:32};
 // Moving traffic is anticipated at its predicted closest approach (1) rather
 // than at its current lateral offset (0).
 export const AVOID={predict:1};
+// Idle-ally yielding: lateral (sticky sideways slide) or plain contact push;
+// share is the overlap fraction an idle ally takes from a mover (native
+// b_push_idle_0: the idle body is carried, the mover keeps 15/16 speed);
+// preStep scales an anticipatory sidestep (native shows none);
+// memory is the sticky-side lifetime (loops).
 export const YIELD={lateral:false,share:1,preStep:0,memory:12};
 // Seconds pressed against immovable bodies before walking around them, and
 // the movement loops a chosen detour stays valid.

@@ -18,7 +18,7 @@ const run=(units,movement,loops)=>{
     movement.begin();
     for(const e of units)if(e.order&&movement.move(e,e.order,DT,0)){e.order=null;e.arrived=true;e.vx=e.vy=0;}
       else if(!e.order){const home=movement.pushReturn(e);if(home){e.order={kind:'move',...home};e.arrivalBatch=null;}}
-    movement.collision();
+    movement.begin();for(let pass=0;pass<3;pass++)movement.collision(); // as game.js update()
     if(units.every(e=>!e.order||e.hold))return loop;
   }
   return null;
