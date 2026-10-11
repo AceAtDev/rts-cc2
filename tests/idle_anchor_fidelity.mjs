@@ -4,7 +4,7 @@ import {createCombat} from '../dist/combat.js';
 import {PROFILES,SCALE} from '../dist/unit-profiles.js';
 const DT=1/22.4;
 const unit=(id,team,x,type='marine')=>({...PROFILES[type],id,type,team,x,y:500,hp:1000,maxhp:1000,
-  damage:PROFILES[type].weapon.damage,kills:0,cooldown:2,angle:0,turretAngle:0,
+  damage:PROFILES[type].weapon.damage,kills:0,cooldown:0,angle:0,turretAngle:0,
   vision:9*SCALE,vx:0,vy:0,hold:false,order:null,orders:[]});
 const make=(units)=>{
   let now=0;const moves=[];
@@ -61,7 +61,9 @@ check('Custom return policy declines a fresh enemy outside weapon range',()=>{
 });
 check('Custom return policy permits in-range defense, then resumes the same anchor',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),units=[a,t],h=make(units);h.step(a);a.x=850;t.hp=0;h.step(a);
-  const threat=unit(3,1,a.x+100);units.push(threat);h.step(a);assert.equal(a.combatTarget,threat);
+  const threat=unit(3,1,a.x+100);units.push(threat);
+  // Native search waits for a nearly ready weapon on a three-loop schedule.
+  for(let i=0;i<20&&a.combatTarget!==threat;i++){threat.x=a.x+100;h.step(a);}assert.equal(a.combatTarget,threat);
   assert.deepEqual(a.combatAnchor,{x:500,y:500});const x=a.x;threat.hp=0;h.step(a);assert(a.x<x);
 });
 check('Fog loss returns idle units without reading the hidden target new location',()=>{

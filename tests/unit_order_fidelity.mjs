@@ -92,7 +92,7 @@ check('Friendly target death is known even outside the enemy-visibility callback
 });
 check('An acquired automatic target remains stable beyond the scan-plus-slop boundary',()=>{
   const a=unit(1,500),b=unit(2,660,1),h=make([a,b]);a.order={kind:'attackMove',x:1100,y:500};
-  a.cooldown=2;h.step(a);assert.equal(a.combatTarget,b);b.x=730;
+  a.cooldown=0;h.step(a);assert.equal(a.combatTarget,b);a.cooldown=2;b.x=730;
   for(let i=0;i<20;i++){h.step(a);assert.equal(a.combatTarget,b);}
   assert(h.moves.length>=20);
 });

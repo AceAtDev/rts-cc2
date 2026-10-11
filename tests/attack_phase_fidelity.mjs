@@ -1,7 +1,7 @@
 // Native aligned cold-start phase facts; custom repeat admission policy.
 import assert from 'node:assert/strict';
-import {createCombat} from '../dist/combat.js';
-import {PROFILES,SCALE} from '../dist/unit-profiles.js';
+import {createCombat,RANDOM_DELAY} from '../dist/combat.js';
+import {PROFILES,SCALE,FASTER} from '../dist/unit-profiles.js';
 const DT=1/22.4;
 const make=(type)=>{
   const p=PROFILES[type];let now=0,loop=0;
@@ -40,8 +40,10 @@ for(const [type,first] of [['marine',2],['worker',4]]){
     const h=make(type),impacts=[];let serial=0;
     for(let i=0;i<80;i++){h.step();if((h.a.visualShotSerial||0)!==serial){serial=h.a.visualShotSerial;impacts.push(h.loop);}}
     const interval=Math.ceil(PROFILES[type].weapon.period/DT-1e-8);
+    // CWeaponLegacy random delay (-0.0625..0.125 game s) bounds each interval.
+    const low=Math.floor((PROFILES[type].weapon.period+RANDOM_DELAY[0]/FASTER)/DT),high=Math.ceil((PROFILES[type].weapon.period+RANDOM_DELAY[1]/FASTER)/DT)+1;
     assert(impacts.length>=3);assert.equal(impacts[0],first);
-    for(let i=1;i<impacts.length;i++)assert.equal(impacts[i]-impacts[i-1],interval,JSON.stringify(impacts));
+    for(let i=1;i<impacts.length;i++)assert(impacts[i]-impacts[i-1]>=low&&impacts[i]-impacts[i-1]<=high,JSON.stringify({impacts,low,high}));
     console.log(JSON.stringify({type,impacts,baseInterval:interval}));
   });
 }

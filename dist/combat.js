@@ -1,11 +1,19 @@
 import {surface} from './geometry.js';
 import {SIEGE_WEAPON,FASTER,SCALE,turnTowards} from './unit-profiles.js';
 
+// Weapon random delay bounds in game seconds (CWeaponLegacy defaults).
+export const RANDOM_DELAY=[-.0625,.125],WEAPON_SEED=0x5c2;
+// Remaining cooldown (real seconds at Faster) below which target search runs.
+export const ACQUIRE_COOLDOWN_GATE=2.5/22.4+1e-6,ACQUIRE_SCAN_LOOPS=3;
 export function createCombat({entities,visible,move,research,shots,clock,onDamage}) {
   let missiles=[],processedThisLoop=new Set(),idleThisLoop=new Set(),helpThisLoop=new Set();
   // Core CGame defaults; exact native arbitration/phase ordering is separate.
   const helpRadius=4*SCALE,helpPeriod=2/FASTER,idleMovementLimit=21*SCALE,leashResetRadius=5*SCALE;
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  // CWeaponLegacy RandomDelayMin/Max (-0.0625..0.125 game s) lengthen or
+  // shorten each cooldown; a seeded generator keeps simulations reproducible.
+  let seed=WEAPON_SEED;
+  const random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
   const weapon=e=>e.sieged?SIEGE_WEAPON:e.weapon||{range:e.range,scan:e.range,minimum:0,period:e.cool,point:.12,backswing:.25,damage:e.damage,turret:true};
   const valid=(e,t,w)=>!!t&&t.hp>0&&(t.team!==e.team||e.order?.kind==='attack'&&e.order.target===t&&t!==e)&&!t.planned&&!t.loadedIn&&!t.insideRefinery&&(!t.flying||w.air)&&visible(e,t);
   const observed=(e,t)=>!!t&&(t.team===e.team||visible(e,t));
@@ -13,6 +21,10 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
   const inRange=(e,t,w,slop=0)=>surface(e,t).distance-e.r<=w.range+slop&&(!w.minimum||surface(e,t).distance-e.r>=w.minimum);
   const priority=t=>t.attackTargetPriority??(t.building?(t.damage?20:11):20);
   const armed=t=>!!(t.weapon?.damage??t.damage);
+  // Native acquisition: among equal AttackTargetPriority, combat units are
+  // preferred over workers and unarmed units before distance is considered.
+  const threat=t=>armed(t)&&t.type!=='worker'&&!t.building;
+  const rank=t=>priority(t)*2+(threat(t)?1:0);
   function cancel(e) {e.windup=null;e.burst=null;e.backswing=0;e.combatTarget=null;e.combatResponseTarget=null;e.combatAnchor=null;e.combatReturning=false;e.attackTargetMemory=null;e.attackLastSeen=null;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.acquireTime=0;e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;idleThisLoop.delete(e);}
   function acceptOrder(e) {
     const o=e.order;
@@ -60,7 +72,8 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
   }
   function fire(e,t,w) {
     e.visualShotSerial=(e.visualShotSerial||0)+1;e.visualShotAt=clock();
-    e.cooldown=w.period/(e.stim?1.5:1);e.backswing=w.backswing/(e.stim?1.5:1);
+    const jitter=w.randomDelay===false?0:(RANDOM_DELAY[0]+random()*(RANDOM_DELAY[1]-RANDOM_DELAY[0]))/FASTER;
+    e.cooldown=Math.max(0,w.period/(e.stim?1.5:1)+jitter);e.backswing=w.backswing/(e.stim?1.5:1);
     const point={x:t.x,y:t.y};
     if(w.missileSpeed)missiles.push({source:e,target:t,weapon:w,x:e.x,y:e.y,origin:{x:e.x,y:e.y}});
     else impact(e,t,w,point);
@@ -146,7 +159,14 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     }
     target=assistance(e,w,o,target,rangeOnly);
     e.acquireTime=(e.acquireTime||0)-dt;
-    if(!manual&&(e.acquireTime<=0||!target)) {
+    // Native traces: a unit that lost its target searches again only once its
+    // weapon is within two loops of ready, even when an enemy is in range.
+    // Searches run on a per-unit three-loop schedule; together with the gate
+    // this reproduces the native spread of remaining cooldown at acquisition.
+    const loop=Math.round(clock()*22.4),scanLoop=(loop+(e.id|0))%ACQUIRE_SCAN_LOOPS===0;
+    if(target)e.lostTargetScan=false;else if(e.combatTarget&&!valid(e,e.combatTarget,w))e.lostTargetScan=true;
+    const searching=!target&&(e.cooldown>ACQUIRE_COOLDOWN_GATE||e.lostTargetScan&&!scanLoop);
+    if(!manual&&!searching&&(e.acquireTime<=0||!target)) {
       e.acquireTime=.1;
       let best=target;
       // AttackMove/Patrol contribute to the nearby fight instead of following
@@ -156,7 +176,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
       for(const t of entities())if(valid(e,t,w)&&surface(e,t).distance-e.r<=Math.max(w.scan,w.range)&&surface(e,t).distance-e.r>=w.minimum) {
         if(rangeOnly&&!inRange(e,t,w))continue;
         const closer=!best||surface(e,t).distance<surface(e,best).distance;
-        if(!best||priority(t)>priority(best)||priority(t)===priority(best)&&
+        if(!best||rank(t)>rank(best)||rank(t)===rank(best)&&
           (!target&&closer||replaceRetreating&&inRange(e,t,w)&&(!inRange(e,best,w)||closer)))best=t;
       }
       target=best;
@@ -236,6 +256,6 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     }
     helpThisLoop.clear();return reacted;
   }
-  function reset(){missiles=[];processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatAnchor=null;e.combatReturning=false;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.lastCombatHelpAt=undefined;}}
+  function reset(){missiles=[];seed=WEAPON_SEED;processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatAnchor=null;e.combatReturning=false;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.lastCombatHelpAt=undefined;}}
   return {begin,engage,flushHelp,cancel,acceptOrder,weapon,inRange,reset};
 }
