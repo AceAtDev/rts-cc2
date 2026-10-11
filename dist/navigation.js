@@ -13,7 +13,8 @@ export function createNavigation({world,obstacles}){
   const planning={expanded:0,pending:0,cancelled:0,sharedHits:0,completed:0,nodeBudget:1024};
   const invalidate=()=>{version++;grids.clear();routes.clear();sharedRoutes.clear();jobs=[];owners.clear();privateGoals=new WeakMap();};
   const inWorld=(p,r)=>p.x>=r&&p.y>=r&&p.x<=world.w-r&&p.y<=world.h-r;
-  function clear(a,b,r,ignore=null){return inWorld(b,r)&&!obstacles().some(o=>o.entity!==ignore&&segmentBlocked(a,b,r,o));}
+  // slop: overlap allowed against structure footprints only (see movement.js).
+  function clear(a,b,r,ignore=null,slop=0){return inWorld(b,r)&&!obstacles().some(o=>o.entity!==ignore&&segmentBlocked(a,b,o.footprint?r-slop:r,o));}
   function pointBlocked(p,r,o){
     const b=o.bounds||bounds(o);if(p.x<b.x0-r||p.x>b.x1+r||p.y<b.y0-r||p.y>b.y1+r)return false;
     if(!o.footprint)return(p.x-o.x)**2+(p.y-o.y)**2<(o.r+r)**2-1e-6;
@@ -113,7 +114,7 @@ export function createNavigation({world,obstacles}){
     jobs=jobs.filter(job=>[...owners.values()].some(ticket=>ticket.job===job));
     planning.pending=jobs.length;
   };
-  path.request=(e,target)=>{
+  path.request=(e,target,retry=false)=>{
     const r=terrainRadius(e),end=project(target,r),targetKey=[Math.round(end.x/14),Math.round(end.y/14),r,version].join(':');
     if(clear(e,end,r)){owners.delete(e);return[end];}
     const grid=gridFor(r),start=connector(e,r,grid),goal=connector(end,r,grid);
@@ -146,11 +147,18 @@ export function createNavigation({world,obstacles}){
       const job=jobs.shift();if(!job.result)advance(job,64);
       if(!job.result)jobs.push(job);
     }
+    // The requester's own search may use what is left of this step's budget,
+    // so a short detour is ready on the loop the order starts (native units
+    // leave at once; f_mixed_depot_choke Hellion behind a depot line).
+    if(!ticket.job.result&&budget>0){advance(ticket.job,budget);if(ticket.job.result)jobs=jobs.filter(j=>j!==ticket.job);}
     planning.pending=jobs.length;
     if(ticket.job.result){
       const result=ticket.job.result.map(p=>({...p}));owners.delete(e);
       const joined=reusable(e,end,r,goal);if(joined)return joined;
-      if(ticket.job.start!==start){privateGoals.set(e,targetKey);return null;}
+      // A follower whose start cell cannot join the lead corridor searches
+      // privately at once (native f_mixed_depot_choke: a Hellion behind a
+      // depot line leaves on the same loop as its squad).
+      if(ticket.job.start!==start){privateGoals.set(e,targetKey);owners.delete(e);return budget>0&&!retry?path.request(e,target,true):null;}
       if(result.length)result[result.length-1]=end;return result;
     }
     return null;

@@ -9,6 +9,23 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
   let cells=new Map(), starts=new Map(), requests=0, frame=0, pass=0;
   const arrivals=new Map(); // command batch -> {count, area: sum r^2} of units that completed it
   const settle=(e,batch)=>{const k=arrivals.get(batch)||{count:0,area:0};arrivals.set(batch,{count:k.count+1,area:k.area+e.r*e.r});};
+  // Native 4.10 stop radius once a squadmate has arrived (g_*_m4 probes: the
+  // same 2x2 Marine box behind different arrivals stops at a sharp distance
+  // from the point, the same for every later Marine): rho steps with the
+  // squad area resting on the point, i.e. arrived squadmates within their
+  // radius plus ARRIVAL.near of it, in Marine areas u: one Marine, SCV or
+  // Reaper (u 1) .75; a Hellion, a Marauder or two Marines (u 2-2.8) 1.125;
+  // Hellion+SCV (3.8) 1.875; a Siege Tank or two Hellions side by side (5.5)
+  // 2.625. Marines then stop at rho + .375.
+  const occupied=new Map();
+  function occupancy(batch,p){
+    const key=batch+':'+frame,hit=occupied.get(key);if(hit!==undefined)return hit;
+    let u=0;
+    for(const b of entities())if(b.arrivedBatch===batch&&!b.order&&b.hp>0&&!b.flying&&dist(b,p)<=b.r+ARRIVAL.near*SCALE)u+=(b.r/SCALE)**2/.140625;
+    const n=u<=ARRIVAL.u1?2:u<=ARRIVAL.u2?3:Math.round(ARRIVAL.slope*u+ARRIVAL.offset);
+    const rho=Math.min(.375*n,ARRIVAL.occCap);
+    if(occupied.size>64)occupied.clear();occupied.set(key,rho);return rho;
+  }
   const length=(x,y)=>Math.hypot(x,y);
   const dist=(a,b)=>length(a.x-b.x,a.y-b.y);
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -63,7 +80,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
     const h=e.pushHome;if(!h)return null;
     if(!homeless(e)){e.pushHome=null;return null;}
     h.loops++;const d=dist(e,h);
-    if(d>PUSH_RETURN.far*SCALE||h.loops%PUSH_RETURN.period===0&&d>PUSH_RETURN.near*SCALE){e.pushHome=null;return {x:h.x,y:h.y};}
+    if(d>(PUSH_RETURN.farRadius?PUSH_RETURN.farRadius*e.r:PUSH_RETURN.far*SCALE)||h.loops%PUSH_RETURN.period===0&&d>(PUSH_RETURN.nearRadius?PUSH_RETURN.nearRadius*e.r:PUSH_RETURN.near*SCALE)){e.pushHome=null;return {x:h.x,y:h.y};}
     return null;
   }
   function yieldDirection(m,b){
@@ -201,24 +218,28 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
     // Native 4.10 group arrival (b_arr_row8, mixed_move, spread48_move,
     // march24_far, loose32/compact6 click-inside; see ARRIVAL):
     // - a squadmate touching nobody walks onto the exact point;
-    // - before anyone has arrived, a unit touching a squadmate within
-    //   ARRIVAL.first of the point settles at once (the four nearest of a
-    //   click inside a compact box settle together ~0.5 out);
-    // - afterwards a unit touching a squadmate settles on its 8-loop AI slot
-    //   (the scan slot: 88% of native settles) inside a radius that grows with
-    //   the arrived squad area up to ARRIVAL.cap game units;
+    // - before anyone has arrived, a unit touching a squadmate within the
+    //   pair's contact distance of the point settles on its 8-loop AI slot
+    //   (native g_* first arrivals land on slot 1; a click inside a compact
+    //   box settles its four nearest together ~0.5 out at once);
+    // - afterwards the stop radius is occupancy() + .375, less ARRIVAL.self
+    //   per game unit of own radius above a Marine's (Siege Tanks in
+    //   mixed_move stop closer): a unit touching a still-moving squadmate
+    //   stops the loop it is inside it (g_*_m4 front pairs, off-slot); one
+    //   touching only arrived squadmates stops there on its AI slot, so it
+    //   carries them on until then (f_mixed_depot_choke);
     // - off-slot, a unit pressed into an arrived squadmate settles after
     //   ARRIVAL.contactTime (march24_far settles mostly off-slot this way).
     if(packed){
       const batch=e.order.batch,{count:arrived,area}=arrivals.get(batch)||{count:0,area:0};
       const done=()=>{e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;e.arrivedBatch=batch;e.packedStall=null;
         settle(e,batch);return true;};
-      let mates=0,arrivedMate=false,pair=0;
+      let mates=0,arrivedMate=false,movingMate=false,pair=0;
       for(const b of neighbors(e)){
         if(b===e||b.team!==e.team||b.hp<=0||b.flying)continue;
         const still=b.arrivedBatch===batch&&!b.order,mate=still||b.order?.batch===batch;
         if(!mate||dist(e,b)>e.r+b.r+ARRIVAL.touch)continue;
-        mates++;if(still)arrivedMate=true;pair=Math.max(pair,e.r+b.r);
+        mates++;if(still)arrivedMate=true;else movingMate=true;pair=Math.max(pair,e.r+b.r);
       }
       const G=SCALE,own=ARRIVAL.big*Math.max(0,e.r/G-.375);
       // A click inside the group's box grows the radius with the squad area
@@ -229,9 +250,12 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       // distance (two Marines .75; native f_mixed_depot_choke: a Hellion
       // touching a Hellion on the point settles 1.15 out, not inside .25).
       if(!arrived)radius=ARRIVAL.firstPair&&!e.order.inside?ARRIVAL.first*pair/(.75*G):Math.min(radius,ARRIVAL.first);
+      if(arrived&&ARRIVAL.occ&&!e.order.inside)radius=occupancy(batch,p)+.375+ARRIVAL.self*(e.r/G-.375);
       const inRadius=d<=radius*G;
-      if(!arrived&&mates&&inRadius)return done();
-      if(arrived&&mates&&inRadius&&(!ARRIVAL.slot||scanDue(e,(loop?loop():frame>>1)+ARRIVAL.shift)))return done();
+      if(arrived&&ARRIVAL.occ&&!e.order.inside&&movingMate&&inRadius)return done();
+      const slotDue=!ARRIVAL.slot||scanDue(e,(loop?loop():frame>>1)+ARRIVAL.shift);
+      if(!arrived&&mates&&inRadius&&(!ARRIVAL.firstSlot||e.order.inside||slotDue))return done();
+      if(arrived&&mates&&inRadius&&slotDue)return done();
       if(inRadius&&arrived){
         if(e.packedStall?.order!==e.order)e.packedStall={order:e.order,best:d,time:0};
         if(d<e.packedStall.best-1){e.packedStall.best=d;e.packedStall.time=0;}else if((e.packedStall.time+=dt)>=ARRIVAL.stall)return done();
@@ -420,7 +444,11 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
     if(exactPoint&&dist(dest,goal)<.001&&(e.vx*dx+e.vy*dy)/len*dt>=len&&clear(e,goal,radius)){
       next={...goal};e.vx=(next.x-e.x)/dt;e.vy=(next.y-e.y)/dt;
     }
-    if(!e.flying&&!clear(e,next,radius)) {
+    // Native bodies graze structures: a Hellion (InnerRadius .5) passes a
+    // depot edge .484 off and a Marauder (.375) a corner .33 off
+    // (f_mixed_depot_choke), so a step may overlap a structure footprint by
+    // COLLISION.terrainSlop.
+    if(!e.flying&&!clear(e,next,radius)&&!(COLLISION.terrainSlop&&clear(e,next,radius,null,COLLISION.terrainSlop*SCALE))) {
       const sx={x:next.x,y:e.y},sy={x:e.x,y:next.y};
       if(clear(e,sx,radius)){next=sx;e.vy=0;}
       else if(clear(e,sy,radius)){next=sy;e.vx=0;}
@@ -445,7 +473,13 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       const sameBatch=a.arrivalBatch&&a.arrivalBatch===b.arrivalBatch;
       // An idle unit shoved this loop passes the shove down a chain (native
       // b_push_idle_line: a Marine carries three in a row at ~15/16 speed).
-      const movingA=length(a.vx,a.vy)>3||a.pushedAt===frame,movingB=length(b.vx,b.vy)>3||b.pushedAt===frame;
+      // A shoved idle body never shoves a walking unit back (native
+      // g_carry_row: two Marines either side of an idle Marauder carry it
+      // straight on and keep their lanes).
+      const walkA=length(a.vx,a.vy)>3,walkB=length(b.vx,b.vy)>3;
+      const straight=YIELD.carryStraight&&!sameBatch;
+      const movingA=walkA||a.pushedAt===frame&&!(straight&&!a.order&&walkB&&b.order),
+        movingB=walkB||b.pushedAt===frame&&!(straight&&!b.order&&walkA&&a.order);
       const enemy=a.team!==b.team;
       const anchorA=a.hold||a.sieged||a.transform||(!movingA&&movingB&&(enemy||a.firingHold));
       const anchorB=b.hold||b.sieged||b.transform||(!movingB&&movingA&&(enemy||b.firingHold));
@@ -519,7 +553,12 @@ export const COMPACT_FORMATION_EXTENT=6*SCALE;
 // pressed into an arrived squadmate;
 // idleShare/fightShare: overlap share an arrived squadmate takes when a mover
 // hits it (Move / attack-move or fighting).
-export const ARRIVAL={touch:1,first:.75,firstPair:1,grow:2.5,cap:3,free:1.25,big:2,slot:1,shift:7,stall:.5,contactTime:.6,idleShare:1,fightShare:.6};
+// occ: use the occupancy stop radius once someone arrived (first/grow/cap
+// and big then only serve a click inside the box); firstSlot: first arrivals
+// wait for their slot; near/u1/u2/slope/offset/occCap: occupancy() steps;
+// self: stop-radius change per game unit of own radius above a Marine's.
+export const ARRIVAL={touch:1,first:.75,firstPair:1,grow:2.5,cap:3,free:1.25,big:2,slot:1,shift:7,stall:.5,contactTime:.6,idleShare:1,fightShare:.6,
+  occ:1,firstSlot:1,near:.375,u1:1.5,u2:3,slope:1.25,offset:.25,occCap:3,self:-2};
 // Blocked ranged approach (slide()): contact = world-unit slack that counts as
 // touching; makeWay = fraction of our speed an ally must move along our
 // heading to not block; crowd = radius (world) of the crowd we peel away
@@ -534,11 +573,14 @@ export const ENGAGE={contact:4,makeWay:.4,crowd:42,tie:.05,awayFromCrowd:1};
 // its speed (native max step 0.1406 for Marines in every crowd trace);
 // slide: share of the blocked step a shoved unit regains along the shove
 // while farther than slideNear game units from its point.
-export const COLLISION={gap:-.0625*SCALE,combat:.5,stepCap:1,slide:1,slideNear:1.5};
+export const COLLISION={gap:-.0625*SCALE,combat:.5,stepCap:1,slide:1,slideNear:1.5,terrainSlop:.0625};
 // Pushed idle units walk back (native idle_push, b_push_idle_*): a displacement
 // past `far` game units orders the return at once; otherwise a check every
 // `period` loops after the first push returns units displaced past `near`.
-export const PUSH_RETURN={far:3,near:.5,period:32};
+// farRadius: the immediate threshold is farRadius x the unit radius instead
+// (native: a Marine returns once 3.05-3.08 out, a Marauder carried 4.4-4.5
+// waits for the 32-loop check; g_carry_*, f_mixed_push_idle).
+export const PUSH_RETURN={far:3,farRadius:8,near:.5,nearRadius:4/3,period:32};
 // Moving traffic is anticipated at its predicted closest approach (1) rather
 // than at its current lateral offset (0). squad: 1 also swerves around
 // squadmates of the same Move command; squadSpacing scales their spacing push.
@@ -551,7 +593,7 @@ export const STEER={instant:1};
 // preStep scales an anticipatory sidestep (native shows none); settled
 // scales the sidestep of an arrived squadmate (native carries it straight);
 // memory is the sticky-side lifetime (loops).
-export const YIELD={lateral:false,share:1,preStep:0,settled:0,memory:12};
+export const YIELD={lateral:false,share:1,preStep:0,settled:0,memory:12,carryStraight:1};
 // Seconds pressed against immovable bodies before walking around them, and
 // the movement loops a chosen detour stays valid.
 export const ANCHOR_DETOUR_DELAY=.25,DETOUR_LOOPS=67;

@@ -457,3 +457,47 @@ for _name in [k for k in FIXTURES if k.startswith('f_')]:
     _spec = _copy.deepcopy(FIXTURES[_name])
     _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
     FIXTURES['jit_'+_name] = _spec
+
+# --- group stop rule probes (g_): who stops where once a squadmate has arrived ---
+# Groups are wider than the 6-unit compact box, so they converge on the point
+# instead of keeping offsets; jit_g_ twins give floors.
+FIXTURES['g_h_m1'] = dict(loops=150, units=[('h', 'Hellion', 1, [[40, 42]]), ('m', 'Marine', 1, [[32, 42]])],
+                          commands=[(0, 'move', ['h', 'm'], (48, 42))])
+FIXTURES['g_h_m3col'] = dict(loops=160, units=[('h', 'Hellion', 1, [[40, 42]]), ('m', 'Marine', 1, line(33, 42, 3, -.8, 0))],
+                             commands=[(0, 'move', ['h', 'm'], (48, 42))])
+FIXTURES['g_h_m3row'] = dict(loops=150, units=[('h', 'Hellion', 1, [[40, 42]]), ('m', 'Marine', 1, line(33, 41.2, 3, 0, .8))],
+                             commands=[(0, 'move', ['h', 'm'], (48, 42))])
+FIXTURES['g_h2_m6'] = dict(loops=170, units=[('h', 'Hellion', 1, line(40, 41.2, 2, 0, 1.6)),
+                                             ('m', 'Marine', 1, grid(32, 41, 3, 2, 1.0))],
+                           commands=[(0, 'move', ['h', 'm'], (50, 42))])
+FIXTURES['g_h3_m6'] = dict(loops=170, units=[('h', 'Hellion', 1, line(40, 40.4, 3, 0, 1.6)),
+                                             ('m', 'Marine', 1, grid(32, 41, 3, 2, 1.0))],
+                           commands=[(0, 'move', ['h', 'm'], (50, 42))])
+FIXTURES['g_t_m4'] = dict(loops=170, units=[('t', 'SiegeTank', 1, [[40, 42]]), ('m', 'Marine', 1, grid(32, 41.5, 2, 2, 1.0))],
+                          commands=[(0, 'move', ['t', 'm'], (50, 42))])
+FIXTURES['g_m_m1'] = dict(loops=150, units=[('m', 'Marine', 1, [[39, 42], [32, 42]])],
+                          commands=[(0, 'move', 'm', (46, 42))])
+FIXTURES['g_m8col'] = dict(loops=170, units=[('m', 'Marine', 1, line(38, 42, 8, -.8, 0))],
+                           commands=[(0, 'move', 'm', (46, 42))])
+# What sets the stop radius: the same 2x2 Marine box behind different arrivals.
+for _key, _lead in [('h', [('h', 'Hellion', 1, [[40, 42]])]), ('r', [('r', 'Marauder', 1, [[40, 42]])]),
+                    ('s', [('s', 'SCV', 1, [[40, 42]])]), ('h2', [('h', 'Hellion', 1, [[40, 41.2], [40, 42.8]])]),
+                    ('h2c', [('h', 'Hellion', 1, [[40, 42], [38.4, 42]])]), ('m2', [('a', 'Marine', 1, [[40, 41.6], [40, 42.4]])]),
+                    ('t_off', [('t', 'SiegeTank', 1, [[40, 43]])]), ('a', [('a', 'Marine', 1, [[40, 42]])]),
+                    ('p', [('p', 'Reaper', 1, [[40, 42]])]), ('hs', [('h', 'Hellion', 1, [[40, 41.2]]), ('s', 'SCV', 1, [[40, 42.8]])]),
+                    ('th', [('h', 'Hellion', 1, [[40, 42]]), ('t', 'SiegeTank', 1, [[38, 42]])]),
+                    ('a2w', [('a', 'Marine', 1, [[40, 41], [40, 43]])])]:
+    FIXTURES[f'g_{_key}_m4'] = dict(loops=170, units=_lead+[('m', 'Marine', 1, grid(32, 41.5, 2, 2, 1.0))],
+                                    commands=[(0, 'move', [g[0] for g in _lead]+['m'], (50, 42))])
+# A column of three Marines meets one idle Marauder at lateral offsets.
+for off in (0, .4, .8):
+    FIXTURES[f'g_carry_{int(off*10)}'] = dict(loops=150, units=[('m', 'Marine', 1, line(36, 42, 3, -.8, 0)),
+                                                                 ('i', 'Marauder', 1, [[40, 42+off]])],
+                                              commands=[(0, 'move', 'm', (50, 42))])
+FIXTURES['g_carry_row'] = dict(loops=150, units=[('m', 'Marine', 1, line(36, 41.2, 3, 0, .8)),
+                                                 ('i', 'Marauder', 1, [[40, 42.3]])],
+                               commands=[(0, 'move', 'm', (50, 42))])
+for _name in [k for k in FIXTURES if k.startswith('g_')]:
+    _spec = _copy.deepcopy(FIXTURES[_name])
+    _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
+    FIXTURES['jit_'+_name] = _spec
