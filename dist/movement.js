@@ -40,10 +40,10 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
   // count too (native g_h2_m6: two Hellions reaching .96 side by side both
   // settle there and make the Marines stop at 3.0; idle units and units
   // outside the command never count: h_idle_*, h_hold_tank).
-  function stopArea(e,batch,p){
+  function stopArea(e,batch,p,skip=null){
     let q=0;
     for(const b of entities()){
-      if(b===e||b.hp<=0||b.flying||b.team!==e.team)continue;
+      if(b===e||b.hp<=0||b.flying||b.team!==e.team||skip?.has(b))continue;
       const walking=walkingAtStart(b,batch),near=b.r+ARRIVAL.near*SCALE+1e-6;
       if(walking){if(dist(atStart(b),p)<=near)q+=(b.r/e.r)**2;continue;}
       if(b.arrivedBatch!==batch||b.order)continue;
@@ -56,9 +56,15 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       // ARRIVAL.nearDelay loops (f_mixed_depot_choke, march24_far: the late
       // radius grows with them); one that settled on the point stops
       // counting once pushed off it (jit_h_pack3).
-      if(dist(b,p)>rest){b.nearSince=undefined;continue;}
+      // "On the point" for a settled squadmate is its radius plus
+      // ARRIVAL.near; one that settled further out counts only once carried
+      // within that and rested there (h_same_*, h_<lead>_<mover>4: a front
+      // pair settled at 2 radii, 1.04-1.16 out, never counts for the rear
+      // pair; h_tank_siegetank4: front Tanks resting 1.9-2.1 out neither).
+      const on=b.r+ARRIVAL.near*SCALE+1e-6,off=b.settledAt!==undefined&&b.settledAt>on;
+      if(dist(b,p)>(off?on:rest)){b.nearSince=undefined;continue;}
       if(b.nearSince===undefined||b.nearSinceBatch!==batch){b.nearSince=frame;b.nearSinceBatch=batch;}
-      if(b.settledAt!==undefined&&b.settledAt>rest&&frame-b.nearSince<ARRIVAL.nearDelay)continue;
+      if(off&&frame-b.nearSince<ARRIVAL.nearDelay)continue;
       q+=(b.r/e.r)**2;
     }
     return q;
@@ -247,10 +253,21 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       }
       p=e.interaction.goal;stopAt=1;
     }
-    const d=dist(e,p),tolerance=exactPoint?1e-6:stopAt+1;
+    // Exact points complete within 0.001 world units: below the step floor
+    // further down (len<.001) a unit would otherwise stall a hair short and
+    // keep its order forever (compact squads ending beside a pushed idle Tank,
+    // h_idle_tank: two Marines 0.00008 short).
+    const d=dist(e,p),tolerance=exactPoint?1e-3:stopAt+1;
     const packed=point===e.order&&e.order?.formation==='packed'&&e.order.batch!==undefined&&!e.flying;
+    // Native h_hold_tank (loops 116, 123): a Move whose point lies under a
+    // Hold Position or sieged body completes on the loop the unit is pressed
+    // to contact with it (Marines 1.19 out from a held Tank), not at its stop
+    // radius; it would otherwise slide around the body.
+    const onPoint=b=>point===e.order&&e.order?.kind==='move'&&!e.flying&&b!==e&&b.hp>0&&!b.flying&&!b.building&&
+      (b.hold||b.sieged)&&dist(b,p)<b.r+e.r+COLLISION.gap;
+    const blocked=neighbors(e).some(b=>onPoint(b)&&dist(e,b)<=e.r+b.r+COLLISION.gap+ARRIVAL.pressed);
     // A packed leader can come to rest a hair short of the point after braking.
-    if(d<=tolerance||packed&&d<.5){e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;
+    if(d<=tolerance||packed&&d<.5||blocked){e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;
       if(point===e.order){e.arrivedBatch=e.order.batch;e.settledAt=d;}if(packed)settle(e,e.order.batch);return true;}
     // Native 4.10 group arrival (g_*, h_* probes, b_arr_row8, mixed_move,
     // spread48_move, march24_far, loose32/compact6 click-inside; see ARRIVAL):
@@ -266,7 +283,11 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
     //   beside one on the point (g_h3_m6 flanks), or as a column follower
     //   pushing on, within ARRIVAL.pushStop radii (g_m8col);
     // - a click inside the group's box keeps the area-grown radius and
-    //   settles touching squadmates on slot (loose32, compact6);
+    //   settles touching squadmates on slot (loose32, compact6), unless a
+    //   squadmate already stands on the point (h_pack*);
+    // - a unit carrying an off-point squadmate stops at 3 radii or more, and
+    //   one flanked on both sides walks on to an empty point (see below);
+    // - a Move onto a held or sieged body ends on contact with it;
     // - a unit pressed into an arrived squadmate inside the radius settles
     //   after ARRIVAL.stall without progress or ARRIVAL.contactTime.
     if(packed){
@@ -274,10 +295,12 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       const done=()=>{e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;e.arrivedBatch=batch;e.packedStall=null;e.settledAt=d;
         settle(e,batch);return true;};
       const G=SCALE,inside=e.order.inside;
-      let mates=0,arrivedMate=false,sideMoving=false,sideArrived=false,sideNear=false,ahead=Infinity;
+      let mates=0,arrivedMate=false,sideMoving=false,sideArrived=false,sideNear=false,ahead=Infinity,pressing=null,flank=0;
       for(const b of neighbors(e)){
         if(b===e||b.team!==e.team||b.hp<=0||b.flying)continue;
         const still=b.arrivedBatch===batch&&!b.order,mate=still||b.order?.batch===batch;
+        if(mate&&dist(e,b)<=e.r+b.r+ARRIVAL.flank*G){const c=((b.x-e.x)*(p.x-e.x)+(b.y-e.y)*(p.y-e.y))/((dist(e,b)||1)*(d||1));
+          if(Math.abs(c)<ARRIVAL.side)flank|=((b.x-e.x)*(p.y-e.y)-(b.y-e.y)*(p.x-e.x))>0?1:2;}
         // Touching = native contact distance (r1+r2-1/16) plus a pixel.
         if(!mate||dist(e,b)>e.r+b.r+COLLISION.gap+ARRIVAL.touch)continue;
         mates++;if(still)arrivedMate=true;
@@ -287,6 +310,8 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
         if(walkingAtStart(b,batch)){if(side)sideMoving=true;else if(cos>0)ahead=Math.min(ahead,dist(atStart(b),p));}
         else if(side)sideArrived=true;
         if(side&&dist(atStart(b),p)<=b.r+ARRIVAL.near*G)sideNear=true;
+        // Pressing into (carrying) a squadmate ahead that settled off the point.
+        if(still&&cos>=ARRIVAL.side&&b.settledAt>b.r+ARRIVAL.near*G)(pressing??=new Set()).add(b);
       }
       const slotDue=!ARRIVAL.slot||scanDue(e,(loop?loop():frame>>1)+ARRIVAL.shift);
       let radius,q=0;
@@ -295,19 +320,35 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
         // area that has arrived including this unit (loose32: ~0.5*sqrt(k+1)).
         radius=Math.min(ARRIVAL.free*Math.sqrt(area+e.r*e.r)/G,ARRIVAL.cap)-ARRIVAL.big*Math.max(0,e.r/G-.375);
         if(!arrived)radius=Math.min(radius,ARRIVAL.first);
-      }else{q=stopArea(e,batch,p);radius=stopMultiple(q,e.r/G)*e.r/G;}
+      }else{
+        // Native h_same_* and h_<lead>_<mover>4 (rear pairs of 16 unit types,
+        // both twins): a unit carrying a squadmate that settled off the point
+        // (the front pair, at 2 radii) does not count it and, with something
+        // else on the point (q > 0), stops on entering ARRIVAL.pressFloor of its
+        // own radii (h_same_marauder loops 119-120: 2.95, 2.92 radii;
+        // h_hellion_hellion4 loop 64: 2.86, 2.73). Larger multiples are kept
+        // (h_lead_*: rear pairs at the front pair's 4, 6 or 8).
+        q=stopArea(e,batch,p,pressing);const k=stopMultiple(q,e.r/G);
+        if(k>=ARRIVAL.pressFloor||q<=0)pressing=null;
+        radius=(pressing?ARRIVAL.pressFloor:k)*e.r/G;}
       const inRadius=d<=radius*G;
       if(inside){if(mates&&inRadius&&(!arrived||slotDue))return done();}
       else{
         // Native march24_far: a Marine settles 2.1 out touching one walking
         // ahead of it inside the radius; g_h3_m6 Hellion flanks likewise.
         if(ahead<=radius*G)sideMoving=true;
+        if(pressing&&inRadius)return done();
         const entered=inRadius&&(e.packedPrev?.order!==e.order||e.packedPrev.d>radius*G);
         e.packedPrev={order:e.order,d};
+        // Native h_fa_*3 (13 of 16 trios incl. twins): with nothing on the
+        // point, a unit flanked on both sides by squadmates (centres within
+        // the radii sum plus ARRIVAL.flank) never settles beside them; the flanks
+        // stop first (2.2-2.5 radii) and it walks onto the exact point.
+        const gap=q<=0&&flank===3;if(gap)sideArrived=sideMoving=false;
         if(slotDue&&(sideNear||sideArrived&&d<=ARRIVAL.sideSlot*radius*G))return done();
         if(q<=0){if(inRadius&&(sideMoving||sideArrived)&&slotDue)return done();}
         else if(inRadius&&(sideMoving||sideArrived&&(entered||slotDue)))return done();
-        if(mates&&!sideMoving&&!sideArrived&&slotDue&&d<=ARRIVAL.pushStop*e.r)return done();
+        if(mates&&!sideMoving&&!sideArrived&&slotDue&&d<=ARRIVAL.pushStop*e.r&&!gap)return done();
       }
       if(inRadius&&arrived){
         if(e.packedStall?.order!==e.order)e.packedStall={order:e.order,best:d,time:0};
@@ -428,7 +469,9 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       // Native squads converging on one Move point walk straight into each
       // other (compact6_inside, b_arr_row8): no swerving between squadmates.
       const squad=!AVOID.squad&&e.order?.kind==='move'&&e.order.batch!==undefined&&b.order?.batch===e.order.batch&&point===e.order;
-      if(!pursuit&&!squad&&ahead>0&&ahead<gap+speed*.32&&Math.abs(side)<gap+2&&(!sameDirection&&(anchored||bv>3||b.combatTarget))) {
+      // Native h_hold_tank: Marines walk straight into a held Tank standing
+      // on their point (no swerve before contact, loops 100-116).
+      if(!pursuit&&!squad&&!onPoint(b)&&ahead>0&&ahead<gap+speed*.32&&Math.abs(side)<gap+2&&(!sameDirection&&(anchored||bv>3||b.combatTarget))) {
         const force=speed*.85*(1-Math.abs(side)/(gap+2))*clamp((gap+speed*.32-ahead)/(speed*.32),0,1);
         side=Math.abs(side)>1?(side>=0?1:-1):1;
         // Native f_marauder_amove_hellions: an attack-mover behind a squadmate
@@ -618,9 +661,14 @@ export const COMPACT_FORMATION_EXTENT=6*SCALE;
 // sideSlot: on its slot a unit beside an arrived squadmate settles within
 // sideSlot stop radii; pushStop: a column follower settles on its slot
 // within pushStop own radii;
-// smallMover/q3/q4/q6/q8/kSlope/kOffset: stopMultiple() steps.
+// smallMover/q3/q4/q6/q8/kSlope/kOffset: stopMultiple() steps;
+// pressed: world-unit slack within which a unit touches a Hold/sieged body
+// covering its point; pressFloor: least stop multiple of a unit carrying an
+// off-point squadmate; flank: game units beyond the radii sum within which
+// a squadmate on either side flanks a unit (see move()).
 export const ARRIVAL={touch:1,first:.75,cap:3,free:1.25,big:2,slot:1,shift:7,stall:.5,contactTime:.6,idleShare:1,fightShare:.6,
-  near:.375,nearOwn:1,nearDelay:12,side:.7,sideSlot:2,pushStop:2,smallMover:.5,q3:2,q4:2.9,q6:4.7,q8:6.3,kSlope:.5,kOffset:5.3};
+  near:.375,nearOwn:1,nearDelay:12,side:.7,sideSlot:2,pushStop:2,smallMover:.5,q3:2,q4:2.9,q6:4.7,q8:6.3,kSlope:.5,kOffset:5.3,
+  pressed:.05,pressFloor:3,flank:.5};
 // Blocked ranged approach (slide()): contact = world-unit slack that counts as
 // touching; makeWay = fraction of our speed an ally must move along our
 // heading to not block; crowd = radius (world) of the crowd we peel away
@@ -672,8 +720,13 @@ export function reserveDestinations(movers,point,reachable) {
     const y0=Math.min(...movers.map(m=>m.u.y-m.u.r)),y1=Math.max(...movers.map(m=>m.u.y+m.u.r));
     // A click inside the group's own box converges instead of translating:
     // that is the standard way to clump a small squad (magic box rule).
-    inside=point.x>=x0&&point.x<=x1&&point.y>=y0&&point.y<=y1;
-    if(!inside&&Math.max(x1-x0,y1-y0)<=COMPACT_FORMATION_EXTENT+1e-6){
+    const inBox=point.x>=x0&&point.x<=x1&&point.y>=y0&&point.y<=y1;
+    // Native h_pack2-7, h_placed_tank: when a squadmate already stands on the
+    // point, the rest stop at the stop multiple of what rests there (k = 6
+    // behind three or four Marines, 8 behind a Tank), not the inside-click
+    // radius.
+    inside=inBox&&!movers.some(m=>Math.hypot(m.u.x-point.x,m.u.y-point.y)<=m.u.r+ARRIVAL.near*SCALE+1e-6);
+    if(!inBox&&Math.max(x1-x0,y1-y0)<=COMPACT_FORMATION_EXTENT+1e-6){
       const center={x:movers.reduce((sum,m)=>sum+m.u.x,0)/movers.length,
         y:movers.reduce((sum,m)=>sum+m.u.y,0)/movers.length};
       const slots=movers.map(m=>({x:point.x+m.u.x-center.x,y:point.y+m.u.y-center.y}));
