@@ -46,6 +46,25 @@ Every row below replaced an earlier guess that a native trace contradicted. The 
 | Turning at speed | An SCV running west and ordered east moves east at full speed on the next loop. Its facing then turns at the turn rate. | The velocity heading follows steering at once; only speed ramps (`STEER.instant`). |
 | Pathing radius | Pathing uses `InnerRadius`, smaller than the collision radius for Marauders (0.375) and Hellions (0.5). | `terrainRadius()` uses the inner radius. |
 
+## Status
+
+The final floor report (weapon seeds 1474, 1 and 2) passes **94 of 107** fixtures. A fixture passes when its mean position error is at most max(1.25 × its native-vs-native jitter floor, 0.15) game units. 52 native-only probes, whose unit types the browser lacks, are skipped. All 25 browser suites and 33 Node test files pass.
+
+| Family | What it covers | Pass |
+| --- | --- | --- |
+| core | Group moves, pushing idle units, crossing groups, A-move fights | 8 / 9 |
+| `e_` | Pursuit, leash, target drop and switching in clear lanes | 8 / 8 |
+| `f_` | Mixed squads, chokes, patrols, waypoints, Stop vs Hold, kiting | 11 / 13 |
+| `g_` | Stop radius behind leads of each size, carrying idle units | 24 / 24 |
+| `h_` | Stop radius with squadmates on the point, first arrivals, unit sizes | 40 / 43 |
+| `c_` | Chases on Flat64, whose map objects the browser arena lacks | 3 / 10 |
+
+The `c_` misses come from terrain; their `e_` repeats in clear lanes all pass. The other six misses:
+
+- `spread48_move` (0.282 vs 0.271) and `f_mixed_push_idle` (0.227 vs 0.211): late crowd settling and a push between two walking units.
+- `f_patrol_pair_cross` (0.263): native runs vary 0.23–0.37 across seeds, so this is within real-engine noise.
+- `h_pack2`, `h_marine_hellion4`, `h_same_scv`: see the follow-up section below.
+
 ## Results
 
 Mean per-loop position error, in game units, over the 23 core fixtures. Lower is better.
