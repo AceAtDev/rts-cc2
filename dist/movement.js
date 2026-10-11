@@ -213,19 +213,22 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       const batch=e.order.batch,{count:arrived,area}=arrivals.get(batch)||{count:0,area:0};
       const done=()=>{e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;e.arrivedBatch=batch;e.packedStall=null;
         settle(e,batch);return true;};
-      let mates=0,arrivedMate=false;
+      let mates=0,arrivedMate=false,pair=0;
       for(const b of neighbors(e)){
         if(b===e||b.team!==e.team||b.hp<=0||b.flying)continue;
         const still=b.arrivedBatch===batch&&!b.order,mate=still||b.order?.batch===batch;
         if(!mate||dist(e,b)>e.r+b.r+ARRIVAL.touch)continue;
-        mates++;if(still)arrivedMate=true;
+        mates++;if(still)arrivedMate=true;pair=Math.max(pair,e.r+b.r);
       }
       const G=SCALE,own=ARRIVAL.big*Math.max(0,e.r/G-.375);
       // A click inside the group's box grows the radius with the squad area
       // that has arrived including this unit (loose32: ~0.5*sqrt(k+1)).
       let radius=(e.order.inside?Math.min(ARRIVAL.free*Math.sqrt(area+e.r*e.r)/G,ARRIVAL.cap):
         Math.min(ARRIVAL.first+ARRIVAL.grow*Math.sqrt(area)/G,ARRIVAL.cap))-own;
-      if(!arrived)radius=Math.min(radius,ARRIVAL.first);
+      // Before anyone has arrived the radius is the touching pair's contact
+      // distance (two Marines .75; native f_mixed_depot_choke: a Hellion
+      // touching a Hellion on the point settles 1.15 out, not inside .25).
+      if(!arrived)radius=ARRIVAL.firstPair&&!e.order.inside?ARRIVAL.first*pair/(.75*G):Math.min(radius,ARRIVAL.first);
       const inRadius=d<=radius*G;
       if(!arrived&&mates&&inRadius)return done();
       if(arrived&&mates&&inRadius&&(!ARRIVAL.slot||scanDue(e,(loop?loop():frame>>1)+ARRIVAL.shift)))return done();
@@ -516,7 +519,7 @@ export const COMPACT_FORMATION_EXTENT=6*SCALE;
 // pressed into an arrived squadmate;
 // idleShare/fightShare: overlap share an arrived squadmate takes when a mover
 // hits it (Move / attack-move or fighting).
-export const ARRIVAL={touch:1,first:.75,grow:2.5,cap:3,free:1.25,big:2,slot:1,shift:7,stall:.5,contactTime:.6,idleShare:1,fightShare:.6};
+export const ARRIVAL={touch:1,first:.75,firstPair:1,grow:2.5,cap:3,free:1.25,big:2,slot:1,shift:7,stall:.5,contactTime:.6,idleShare:1,fightShare:.6};
 // Blocked ranged approach (slide()): contact = world-unit slack that counts as
 // touching; makeWay = fraction of our speed an ally must move along our
 // heading to not block; crowd = radius (world) of the crowd we peel away
