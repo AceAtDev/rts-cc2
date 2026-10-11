@@ -414,7 +414,13 @@ FIXTURES['f_stop_vs_hold'] = dict(loops=170, units=[('s', 'Marine', 1, line(33, 
                                                     ('h', 'Marine', 1, line(33, 45.4, 3, 0, .8)),
                                                     ('e', 'Marauder', 2, [[43, 38.2], [43, 46.2]], 'hold')],
                                   commands=[(0, 'move', ['s', 'h'], (60, 42)), (14, 'stop', 's', None), (14, 'hold', 'h', None)])
-FIXTURES['f_patrol_pair_cross'] = dict(loops=220, units=[('m', 'Marine', 1, [[32, 41], [32, 42.6]]),
+# f_stop_vs_hold never came under fire (the Marauders stood 8 away); in this
+# corrected twin the held Marauders reach both groups (range 6 + radii 0.94).
+FIXTURES['f_stop_vs_hold2'] = dict(loops=220, units=[('s', 'Marine', 1, line(33, 37.4, 3, 0, .8)),
+                                                     ('h', 'Marine', 1, line(33, 45.4, 3, 0, .8)),
+                                                     ('e', 'Marauder', 2, [[41.6, 38.2], [41.6, 46.2]], 'hold')],
+                                   commands=[(0, 'move', ['s', 'h'], (60, 42)), (14, 'stop', 's', None), (14, 'hold', 'h', None)])
+FIXTURES['f_patrol_pair_cross'] =dict(loops=220, units=[('m', 'Marine', 1, [[32, 41], [32, 42.6]]),
                                                          ('s', 'SCV', 2, [[45, 52], [46.2, 52.6]])],
                                        commands=[(0, 'patrol', 'm', (56, 42)), (0, 'move', 's', (45.6, 30))])
 FIXTURES['f_tank_marine_amove'] = dict(loops=200, units=[('t', 'SiegeTank', 1, [[30, 40], [30, 43.6]]),

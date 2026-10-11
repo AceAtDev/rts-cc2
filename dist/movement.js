@@ -351,6 +351,18 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       if(!pursuit&&!squad&&ahead>0&&ahead<gap+speed*.32&&Math.abs(side)<gap+2&&(!sameDirection&&(anchored||bv>3||b.combatTarget))) {
         const force=speed*.85*(1-Math.abs(side)/(gap+2))*clamp((gap+speed*.32-ahead)/(speed*.32),0,1);
         side=Math.abs(side)>1?(side>=0?1:-1):1;
+        // Native f_marauder_amove_hellions: an attack-mover behind a squadmate
+        // that stops to fire passes it on the side away from its own crowd,
+        // as the ranged slide does (see slide()); the side is kept per body.
+        if(ENGAGE.awayFromCrowd&&b.team===e.team&&shooting(b)&&!e.combatTarget&&['attackMove','patrol'].includes(e.order?.kind)){
+          if(e.passFiring?.body!==b){
+            let cx=0,cy=0,k=0,t=0;
+            for(const c of neighbors(e))if(c!==e&&c.team===e.team&&c.hp>0&&dist(e,c)<ENGAGE.crowd){cx+=c.x;cy+=c.y;k++;}
+            if(k){cx=cx/k-e.x;cy=cy/k-e.y;t=(cy*ux-cx*uy)/(length(cx,cy)||1);}
+            e.passFiring={body:b,side:Math.abs(t)<ENGAGE.tie?1:-Math.sign(t)};
+          }
+          side=e.passFiring.side;
+        }
         vx+=-uy*side*force;vy+=ux*side*force;
       }
       const spacing=squad?AVOID.squadSpacing:1;
@@ -508,8 +520,10 @@ export const ARRIVAL={touch:1,first:.75,grow:2.5,cap:3,free:1.25,big:2,slot:1,sh
 // Blocked ranged approach (slide()): contact = world-unit slack that counts as
 // touching; makeWay = fraction of our speed an ally must move along our
 // heading to not block; crowd = radius (world) of the crowd we peel away
-// from; tie = lateral share below which the side is a tie (turn right).
-export const ENGAGE={contact:4,makeWay:.4,crowd:42,tie:.05};
+// from; tie = lateral share below which the side is a tie (turn right);
+// awayFromCrowd: an attack-mover without a target passes a firing squadmate
+// on the side away from its own crowd too (0 = the plain avoidance side).
+export const ENGAGE={contact:4,makeWay:.4,crowd:42,tie:.05,awayFromCrowd:1};
 // Native 4.10 bodies in contact settle at r1+r2-1/16 game units (pushed idle
 // pairs, settled crowds, Marine/Tank/Hellion mixes all measure -0.0615..-0.0625).
 // combat: world-unit gap kept while either body fights (A-move concave tuning).
