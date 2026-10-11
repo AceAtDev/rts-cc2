@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createConstruction,activeConstructionTarget,ignoreConstructionCollision,CONSTRUCTION_DELAY} from '../dist/construction.js';
-import {createMovement} from '../dist/movement.js';
+import {createMovement,COLLISION} from '../dist/movement.js';
 import {createCombat} from '../dist/combat.js';
 import {createNavigation} from '../dist/navigation.js';
 import {bounds,surface} from '../dist/geometry.js';
@@ -58,7 +58,7 @@ check('Pair solving and held-unit final contacts respect service collision suppr
   const h=fixture();h.step();const body=worker(3);body.type='marine';body.hold=true;body.x=h.e.x;body.y=h.e.y;
   const movement=createMovement({entities:()=>[h.e,body],world,clear:()=>true,openPoint:()=>true,path:()=>[],navVersion:()=>0});
   const p={x:h.e.x,y:h.e.y};movement.begin();movement.collision();assert.equal(h.e.x,p.x);assert.equal(h.e.y,p.y);
-  h.construction.release(h.e);movement.begin();movement.collision();assert(Math.hypot(h.e.x-body.x,h.e.y-body.y)>=h.e.r+body.r);
+  h.construction.release(h.e);movement.begin();movement.collision();assert(Math.hypot(h.e.x-body.x,h.e.y-body.y)>=h.e.r+body.r+COLLISION.gap-1e-9);
 });
 check('Queued orders remain pending throughout service and are untouched by release',()=>{
   const h=fixture(),next={kind:'move',x:600,y:500};h.e.orders=[next];h.step(180);

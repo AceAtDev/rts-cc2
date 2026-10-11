@@ -17,6 +17,7 @@ const run=(units,movement,loops)=>{
   for(let loop=1;loop<=loops;loop++){
     movement.begin();
     for(const e of units)if(e.order&&movement.move(e,e.order,DT,0)){e.order=null;e.arrived=true;e.vx=e.vy=0;}
+      else if(!e.order){const home=movement.pushReturn(e);if(home){e.order={kind:'move',...home};e.arrivalBatch=null;}}
     movement.collision();
     if(units.every(e=>!e.order||e.hold))return loop;
   }
@@ -43,12 +44,12 @@ check('A spread group settles as one clump inside the native arrival envelope',(
   assert(units.every(u=>Math.hypot(u.x-1640,u.y-240)<=radius));
 });
 
-check('Idle allies are displaced by contact rather than carried to the destination',()=>{
+check('Idle allies shoved by movers walk back to where they stood (native idle_push)',()=>{
   const movers=Array.from({length:6},(_,i)=>unit('marine',300+i%2*22,600+Math.floor(i/2)*22));
   const idle=unit('marine',420,622);const units=[...movers,idle];
   command(movers,{x:800,y:622});const done=run(units,world(units),240);
-  assert(done!==null,'movers arrived');
-  assert(idle.x<520,'idle ally was not shoved toward the destination');
+  assert(done!==null,'movers arrived and the shoved ally returned');
+  assert(Math.hypot(idle.x-420,idle.y-622)<1,'idle ally returned to its spot');
 });
 
 check('Units pressed against a Hold Position block walk around it; held units never move',()=>{

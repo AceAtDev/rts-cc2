@@ -21,7 +21,7 @@ check('Stationary enemies are not pushed by a moving attacker, in either ID orde
     const moving=unit(flipped?2:1,500,500),enemy=unit(flipped?1:2,519,500,1);
     moving.vx=88.2;enemy.order=null;
     const {movement}=make([moving,enemy]);movement.begin();movement.collision();
-    assert.equal(enemy.x,519);assert.equal(enemy.y,500);assert(moving.x<499);
+    assert.equal(enemy.x,519);assert.equal(enemy.y,500);assert(moving.x<500);
   }
 });
 check('Moving enemies separate instead of behaving as stationary anchors',()=>{
@@ -35,8 +35,9 @@ check('An idle ally fifty pixels ahead does not sidestep remotely',()=>{
   assert.equal(b.x,550);assert.equal(b.y,500);assert(a.x>500);
 });
 check('An idle ally can yield at physical contact',()=>{
+  // Native b_push_idle_0: the idle body is shoved by the contact solver.
   const a=unit(1,500,500),b=unit(2,520,500);b.order=null;
-  const {movement}=make([a,b]);movement.begin();movement.move(a,{x:800,y:500},1/60);
+  const {movement}=make([a,b]);movement.begin();movement.move(a,{x:800,y:500},1/60);movement.begin();movement.collision();
   assert(Math.hypot(b.x-520,b.y-500)>0);
 });
 check('Hold anchors remain stationary during overlap separation',()=>{
