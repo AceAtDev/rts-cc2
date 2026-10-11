@@ -1,6 +1,6 @@
 // Regressions for the custom contact solver. These are not native trajectory claims.
 import assert from 'node:assert/strict';
-import {createMovement} from '../dist/movement.js';
+import {createMovement,COLLISION} from '../dist/movement.js';
 import {createNavigation} from '../dist/navigation.js';
 import {createCombat} from '../dist/combat.js';
 import {PROFILES} from '../dist/unit-profiles.js';
@@ -81,7 +81,7 @@ check('Final collision projection prevents later friendly settling from reenteri
   const movement=createMovement({entities:()=>[a,target,b],world,clear:()=>true,
     openPoint:()=>true,path:()=>[],navVersion:()=>0});
   movement.begin();movement.collision();
-  assert.equal(target.x,500);assert(distance(a,target)>=21.5-1e-9);
+  assert.equal(target.x,500);assert(distance(a,target)>=a.r+target.r+COLLISION.gap-1e-9);
 });
 check('An aligned Tank steers around a held ally without restarting stationary alignment every frame',()=>{
   const e={...PROFILES.tank,id:1,type:'tank',team:0,hp:150,x:500,y:500,vx:0,vy:0,angle:0,
@@ -95,7 +95,7 @@ check('An aligned Tank steers around a held ally without restarting stationary a
     if(complete)break;
     movement.begin();movement.collision();
     if(distance(e,origin)<1e-6)stationary++;
-    assert(distance(e,ally)>=e.r+ally.r+.5-1e-6);
+    assert(distance(e,ally)>=e.r+ally.r+COLLISION.gap-1e-6);
   }
   assert(e.x>800,`Tank remained at ${e.x},${e.y}`);assert(stationary<5,`stopped ${stationary} frames`);
 });

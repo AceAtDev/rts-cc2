@@ -245,3 +245,23 @@ FIXTURES['c_amove_retreat2'] = dict(loops=240, units=[('m', 'Marine', 1, [[30, 4
                                     commands=[(0, 'attack', 'm', (70, 42)), (22, 'move', 's', (66, 52))])
 FIXTURES['c_leash_reaper'] = dict(loops=420, units=[('m', 'Reaper', 1, [[30, 42]]), ('s', 'Hellion', 2, [[34.5, 42]])],
                                   commands=[(10, 'move', 's', (62, 42))])
+
+# --- crowd mechanics probes (b_): idle pushes, crossing traffic, arrival -------
+# Mover vs one idle Marine at lateral offsets: contact distance r1+r2-1/16, the
+# idle body is carried and walks back (Move order) once pushed past 3 units.
+for off in (0, .2, .4, .6):
+    FIXTURES[f'b_push_idle_{int(off*10)}'] = dict(loops=150, units=[('m', 'Marine', 1, [[36, 42]]), ('i', 'Marine', 1, [[40, 42+off]])],
+                                                  commands=[(0, 'move', 'm', (50, 42))])
+FIXTURES['b_push_idle_line'] = dict(loops=150, units=[('m', 'Marine', 1, [[36, 42]]), ('i', 'Marine', 1, line(40, 42, 3, .8, 0))],
+                                    commands=[(0, 'move', 'm', (50, 42))])
+for off in (.2, .4):
+    FIXTURES[f'b_headon_off{int(off*10)}'] = dict(loops=90, units=[('a', 'Marine', 1, [[38, 42]]), ('b', 'Marine', 1, [[46, 42+off]])],
+                                                 commands=[(0, 'move', 'a', (46, 42)), (0, 'move', 'b', (38, 42+off))])
+FIXTURES['b_cross90'] = dict(loops=110, units=[('a', 'Marine', 1, [[36, 42]]), ('b', 'Marine', 1, [[43, 35]])],
+                             commands=[(0, 'move', 'a', (50, 42)), (0, 'move', 'b', (43, 49))])
+FIXTURES['b_one_vs_group'] = dict(loops=150, units=[('a', 'Marine', 1, [[36, 42]]), ('b', 'Marine', 1, grid(50, 40.8, 2, 4, .8))],
+                                  commands=[(0, 'move', 'a', (54, 42)), (0, 'move', 'b', (34, 42))])
+FIXTURES['b_one_vs_idle_group'] = dict(loops=150, units=[('a', 'Marine', 1, [[36, 42.2]]), ('b', 'Marine', 1, grid(42, 40.8, 2, 4, .8))],
+                                       commands=[(0, 'move', 'a', (50, 42.2))])
+FIXTURES['b_arr_row8'] = dict(loops=150, units=[('m', 'Marine', 1, line(30, 38.5, 8, 0, 1.0))], commands=[(0, 'move', 'm', (44, 42))])
+FIXTURES['b_arr_grid16'] = dict(loops=170, units=[('m', 'Marine', 1, grid(28, 40, 4, 4, 1.2))], commands=[(0, 'move', 'm', (46, 42))])
