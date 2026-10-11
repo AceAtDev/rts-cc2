@@ -15,7 +15,7 @@ with sync_playwright() as p:
  const army=Array.from({length:12},(_,i)=>g.spawn('marine',1,1100+i%4*28,800+Math.floor(i/4)*28));
  const threat=g.spawn('marine',0,1400,1000);g.stop(threat,true);threat.weapon={...threat.weapon,damage:0};threat.hp=threat.maxhp=10000;
  g.invalidateNav();g.update(0);g.opponent.update();
- check('Enemy defense uses one shared batch and unique reserved destinations',Number.isInteger(army[0].order?.batch)&&army.every(u=>u.order?.kind==='attackMove'&&u.order.batch===army[0].order.batch&&u.order.arrival)&&new Set(army.map(u=>u.order.arrival.x+','+u.order.arrival.y)).size===army.length);
+ check('Enemy defense uses one shared batch and contact arrival around the shared goal',Number.isInteger(army[0].order?.batch)&&army.every(u=>u.order?.kind==='attackMove'&&u.order.batch===army[0].order.batch&&(u.order.formation==='preserved'?u.order.arrival:u.order.groupRadius>0)));
  check('Enemy tactical orders preserve the visible threat as shared goal',army.every(u=>(u.order.groupGoal||u.order).x===threat.x&&(u.order.groupGoal||u.order).y===threat.y));
  tick(50);const accepted=army.map(u=>u.order?.acceptedLoop);g.opponent.update();
  check('Unchanged defense policy keeps accepted orders and acquisition intact',army.every((u,i)=>u.order?.acceptedLoop===accepted[i])&&army.some(u=>u.combatTarget===threat||u.windup?.target===threat||u.visualShotSerial>0));

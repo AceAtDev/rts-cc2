@@ -138,3 +138,110 @@ FIXTURES['prio_attacking_scv_vs_marine'] = dict(loops=40, units=[('m', 'Marine',
 for key in [k for k in FIXTURES if k.startswith('prio_')]:
     spec = FIXTURES[key]
     spec['units'] = [g for g in spec['units'] if g[0] != 'm'] + [g for g in spec['units'] if g[0] == 'm']
+
+# --- per-type unit AI coverage (c_ prefix) -----------------------------------
+# Radii: Marine/Reaper/SCV .375, Marauder .5625, Hellion .625, Siege Tank .875.
+TYPES_AI = ('Marine', 'Marauder', 'Reaper', 'Hellion', 'SiegeTank', 'SiegeTankSieged')
+for kind in TYPES_AI:
+    # Idle acquisition distance and first shot: an enemy SCV walks past.
+    FIXTURES['c_idle_acq_'+kind] = dict(loops=200, units=[('s', 'SCV', 2, [[54, 43.6]]), ('u', kind, 1, [[36, 42]])],
+                                        commands=[(2, 'move', 's', (20, 43.6))])
+    # First-shot timing against a stationary target already in range.
+    FIXTURES['c_first_'+kind] = dict(loops=90, units=[('s', 'SCV', 2, [[40+(4.5 if kind == 'SiegeTankSieged' else 3.5), 42]], 'hold'),
+                                                      ('u', kind, 1, [[40, 42]])], commands=[])
+# Idle unit hit from beyond its own range: Stop (idle) versus Hold.
+HIT_FROM = {'Marine': ('Marauder', 6.8), 'Reaper': ('Marauder', 6.8), 'Hellion': ('Marauder', 7.0),
+            'Marauder': ('SiegeTankSieged', 10.0), 'SiegeTank': ('SiegeTankSieged', 11.0)}
+for kind, (attacker, gap) in HIT_FROM.items():
+    for hold in (False, True):
+        FIXTURES[('c_hold_hit_' if hold else 'c_stop_hit_')+kind] = dict(
+            loops=120, units=[('u', kind, 1, [[40, 42]])+(('hold',) if hold else ()), ('e', attacker, 2, [[40+gap, 42]], 'hold')],
+            commands=[(2, 'attack', 'e', 'u')])
+# Attack-move / Patrol target that retreats out of range.
+FIXTURES['c_amove_retreat'] = dict(loops=260, units=[('m', 'Marine', 1, [[34, 42]]), ('s', 'SCV', 2, [[43, 44.5]])],
+                                   commands=[(0, 'attack', 'm', (56, 42)), (22, 'move', 's', (46, 60))])
+FIXTURES['c_patrol_retreat'] = dict(loops=320, units=[('m', 'Marine', 1, [[34, 42]]), ('s', 'SCV', 2, [[43, 44.5]])],
+                                    commands=[(0, 'patrol', 'm', (52, 42)), (22, 'move', 's', (46, 60))])
+# Patrol past several stationary enemies.
+FIXTURES['c_patrol_multi'] = dict(loops=420, units=[('m', 'Marine', 1, [[30, 42]]),
+                                                    ('e', 'SCV', 2, [[38, 45], [44, 39.2], [50, 45.2]], 'hold')],
+                                  commands=[(0, 'patrol', 'm', (56, 42))])
+# Help: an ally is attacked by an enemy outside the helper's own scan range.
+FIXTURES['c_amove_help'] = dict(loops=220, units=[('a', 'Marine', 1, [[30, 42]]), ('b', 'Marine', 1, [[40, 44]]),
+                                                  ('e', 'Marauder', 2, [[40, 50.6]], 'hold')],
+                                commands=[(0, 'attack', 'a', (58, 42)), (60, 'attack', 'e', 'b')])
+FIXTURES['c_idle_help'] = dict(loops=200, units=[('a', 'Marine', 1, [[36.5, 44]]), ('b', 'Marine', 1, [[40, 44]]),
+                                                 ('e', 'Marauder', 2, [[40, 50.6]], 'hold')],
+                               commands=[(4, 'attack', 'e', 'b')])
+# Hellion line splash through a row of SCVs.
+FIXTURES['c_hellion_line'] = dict(loops=70, units=[('s', 'SCV', 2, [[44.6, 42], [45.6, 42.3], [46.6, 41.7], [47.8, 42],
+                                                                    [45.6, 43.4], [49.3, 42]], 'hold'),
+                                                   ('h', 'Hellion', 1, [[40, 42]])], commands=[])
+# Sieged Tank: a target inside the minimum range, two candidates outside it.
+FIXTURES['c_siege_min'] = dict(loops=160, units=[('n', 'SCV', 2, [[41.6, 42]], 'hold'), ('m', 'Marine', 2, [[49, 42.5]], 'hold'),
+                                                 ('f', 'Marine', 2, [[52, 39]], 'hold'), ('t', 'SiegeTankSieged', 1, [[40, 42]])],
+                               commands=[])
+# Sieged Tank splash with a friendly unit next to the target.
+FIXTURES['c_siege_splash'] = dict(loops=120, units=[('e', 'Marine', 2, [[47, 42]], 'hold'), ('f', 'Marine', 1, [[47.5, 42.6]], 'hold'),
+                                                    ('g', 'SCV', 2, [[46.6, 41.3]], 'hold'), ('t', 'SiegeTankSieged', 1, [[36, 42]])],
+                                  commands=[])
+# Idle chase of a fleeing target, leash/return and re-acquisition on the way home.
+FIXTURES['c_leash_chase'] = dict(loops=420, units=[('m', 'Marine', 1, [[36, 42]]), ('s', 'SCV', 2, [[40.5, 42]]),
+                                                   ('z', 'SCV', 2, [[40, 47.2]], 'hold')],
+                                 commands=[(10, 'move', 's', (62, 42))])
+FIXTURES['c_leash_chase2'] = dict(loops=440, units=[('m', 'Marine', 1, [[36, 42]]), ('s', 'SCV', 2, [[40.5, 42]]),
+                                                    ('z', 'SCV', 2, [[46, 52]], 'hold')],
+                                  commands=[(10, 'move', 's', (62, 42)), (170, 'move', 'z', (46, 45.4))])
+# Scan scheduling: eight separated lanes whose enemies enter range one loop
+# apart. Each lane has its own groups so commands stay parallel to the lane.
+# Lanes stay inside the browser world (native y 17..67).
+LANES = [round(18+6.8*i, 1) for i in range(8)]
+
+
+def lanes(enemy, ours, enemy_x, our_x, dy, step, hold=False):
+    return ([('s%d' % i, enemy, 2, [[enemy_x+step*i, y+dy]]) + (('hold',) if hold else ()) for i, y in enumerate(LANES)] +
+            [('m%d' % i, ours, 1, [[our_x, y]]) for i, y in enumerate(LANES)])
+
+
+FIXTURES['c_scan_idle'] = dict(loops=70, units=lanes('SCV', 'Marine', 39, 30, 1.6, .176),
+                               commands=[(2, 'move', 's%d' % i, (10, y+1.6)) for i, y in enumerate(LANES)])
+FIXTURES['c_scan_idle_hellion'] = dict(loops=70, units=lanes('SCV', 'Hellion', 39, 30, 1.6, .176),
+                                       commands=[(2, 'move', 's%d' % i, (10, y+1.6)) for i, y in enumerate(LANES)])
+FIXTURES['c_scan_amove'] = dict(loops=110, units=lanes('SCV', 'Marine', 36, 24, 1.5, .1406, hold=True),
+                                commands=[(0, 'attack', 'm%d' % i, (60, y)) for i, y in enumerate(LANES)])
+
+
+def approach_then_flee(turn):
+    # Each enemy walks toward its lane's chaser, then runs east (no contact
+    # before the first recorded loop).
+    return ([(2, 'move', 's%d' % i, (10, y)) for i, y in enumerate(LANES)] +
+            [(turn, 'move', 's%d' % i, (80, y)) for i, y in enumerate(LANES)])
+
+
+# Leash distance: chasers of three radii follow a faster or equally fast target.
+FIXTURES['c_leash_lanes'] = dict(loops=230, units=lanes('Hellion', 'Reaper', 34, 24, 0, .117),
+                                 commands=approach_then_flee(22))
+FIXTURES['c_leash_lanes_hellion'] = dict(loops=230, units=lanes('Hellion', 'Hellion', 34, 24, 0, .133),
+                                         commands=approach_then_flee(24))
+FIXTURES['c_leash_lanes_marauder'] = dict(loops=300, units=lanes('Hellion', 'Marauder', 34, 24, 0, .07),
+                                          commands=approach_then_flee(22))
+# Chase/leash without any engagement before the first recorded loop: the SCV
+# walks into range, turns and runs; a second SCV steps into the return path.
+FIXTURES['c_leash_chase3'] = dict(loops=420, units=[('m', 'Marine', 1, [[30, 42]]), ('s', 'SCV', 2, [[38, 42.8]]),
+                                                    ('z', 'SCV', 2, [[44, 52]], 'hold')],
+                                  commands=[(2, 'move', 's', (20, 42.8)), (30, 'move', 's', (78, 42.8)),
+                                            (200, 'move', 'z', (44, 45.4))])
+# Pursuit switching: a second SCV 5.25 (inside scan, outside weapon range)
+# from the chaser's path while its first target runs away.
+for order in ('attack', 'patrol', None):
+    key = {'attack': 'amove', 'patrol': 'patrol', None: 'idle'}[order]
+    FIXTURES['c_switch_'+key] = dict(
+        loops=200, units=[('m', 'Marine', 1, [[30, 42]]), ('s', 'SCV', 2, [[38, 42.8]]), ('z', 'SCV', 2, [[47, 48]], 'hold')],
+        commands=([(0, order, 'm', (70, 42))] if order else [(2, 'move', 's', (20, 42.8))]) +
+                 [(30 if not order else 26, 'move', 's', (78, 42.8))])
+# Attack-move against a target that runs away and flees again when hit
+# (kept inside the browser world).
+FIXTURES['c_amove_retreat2'] = dict(loops=240, units=[('m', 'Marine', 1, [[30, 42]]), ('s', 'SCV', 2, [[39, 44.5]])],
+                                    commands=[(0, 'attack', 'm', (70, 42)), (22, 'move', 's', (66, 52))])
+FIXTURES['c_leash_reaper'] = dict(loops=420, units=[('m', 'Reaper', 1, [[30, 42]]), ('s', 'Hellion', 2, [[34.5, 42]])],
+                                  commands=[(10, 'move', 's', (62, 42))])

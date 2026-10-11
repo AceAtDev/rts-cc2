@@ -419,7 +419,7 @@ export const ARRIVAL={contact:3,contactTime:.2,stall:.5,spread:1.33,idleShare:.6
 // touching; makeWay = fraction of our speed an ally must move along our
 // heading to not block; crowd = radius (world) of the crowd we peel away
 // from; tie = lateral share below which the side is a tie (turn right).
-export const ENGAGE={contact:4,makeWay:.5,crowd:56,tie:.05};
+export const ENGAGE={contact:4,makeWay:.4,crowd:42,tie:.05};
 // Movement loops an idle ally keeps its chosen sideways yield direction.
 // Idle-ally yielding: lateral (sticky sideways slide) or plain contact push;
 // share is the overlap fraction an idle ally takes from a mover; preStep

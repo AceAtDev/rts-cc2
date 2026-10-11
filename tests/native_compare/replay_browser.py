@@ -10,15 +10,27 @@ from playwright.sync_api import sync_playwright
 
 REPLAY = r'''async ([trace,tuning])=>{if(tuning){const mv=await import('./movement.js');for(const [k,v] of Object.entries(tuning)){if(k==='FORCE.targets')continue;const [o,f]=k.split('.');mv[o][f]=v;}}const g=__game,S=28,CX=44,CY=42,BX=1050,BY=700;
 const toB=(x,y)=>({x:(x-CX)*S+BX,y:(CY-y)*S+BY}),toN=e=>[(e.x-BX)/S+CX,CY-(e.y-BY)/S];
-g.reset();g.start();g.running=false;g.aiEnabled=false;g.entities.splice(0);g.minerals.splice(0);g.rocks.splice(0);g.selected=[];g.invalidateNav();
-const TYPE={Marine:'marine',SCV:'worker',Marauder:'marauder',Reaper:'reaper',Hellion:'hellion',SiegeTank:'tank',SupplyDepot:'relay'};
+g.reset();g.start();g.running=false;g.aiEnabled=false;g.revealAll=true;g.entities.splice(0);g.minerals.splice(0);g.rocks.splice(0);g.selected=[];g.invalidateNav();
+const TYPE={Marine:'marine',SCV:'worker',Marauder:'marauder',Reaper:'reaper',Hellion:'hellion',SiegeTank:'tank',SiegeTankSieged:'tank',SupplyDepot:'relay'};
+const {SIEGE_WEAPON}=await import('./unit-profiles.js');
 const f0=trace.frames[0].units,byTag=new Map(),groups={};
 // Keep buildings far away so the game does not end: one per team in a corner.
 g.spawn('core',0,150,1250);g.spawn('core',1,1950,150);
 for(const m of trace.units){const n=f0[m.tag];if(!n&&m.type!=='SupplyDepot')continue;const p=n?toB(n.x,n.y):toB(...m.requested);
  const e=g.spawn(TYPE[m.type],m.owner===1?0:1,p.x,p.y);if(!e.building){e.x=p.x;e.y=p.y;e.px=e.x;e.py=e.y;e.angle=e.pangle=-(n?.facing??0);}
- if(m.hold)g.stop(e,true);if(n){e.hp=n.hp;e.cooldown=(n.cd||0)/22.4;}byTag.set(m.tag,e);(groups[m.group]??=[]).push(e);}
+ if(m.hold)g.stop(e,true);
+ // Native debug spawn creates an already sieged tank; mirror the completed transform.
+ if(m.type==='SiegeTankSieged'){e.sieged=true;e.hold=true;e.turretAngle=e.angle+Math.PI;e.range=SIEGE_WEAPON.range;e.damage=SIEGE_WEAPON.damage;e.cool=SIEGE_WEAPON.period;}if(n){e.hp=n.hp;e.cooldown=(n.cd||0)/22.4;}byTag.set(m.tag,e);(groups[m.group]??=[]).push(e);}
 g.invalidateNav();
+// Native scans run when game_loop % 8 == unit index % 8 (index = tag >> 18).
+// Browser loop L+1+T0 plays native step L -> L+1, whose results the native
+// observes at game_loop G0+L+1; the browser acts on them one loop later.
+const G0=trace.frames[0].game_loop,T0=g.readState().loop;
+if(G0!==undefined)for(const [tag,e] of byTag){const idx=Number(BigInt(tag)>>18n);e.scanPhase=(((G0-idx-1-T0)%8)+8)%8;}
+// Older traces lack game_loop: infer the slot from the first target a unit
+// takes without having been hit on that loop (a scan, not a retaliation).
+else for(const [tag,e] of byTag){const fs=trace.frames;for(let i=1;i<fs.length;i++){const u=fs[i].units[tag],v=fs[i-1].units[tag];
+ if(!u||!v)break;if(u.target&&!v.target&&u.hp>=v.hp){e.scanPhase=(((-(fs[i].loop+1+T0))%8)+8)%8;break;}if(v.target)break;}}
 // State-matched start: copy each unit's native engaged target.
 for(const m of trace.units){const n=f0[m.tag],e=byTag.get(m.tag);if(n?.target&&byTag.has(String(n.target)))e.combatTarget=byTag.get(String(n.target));}
 const frames=[],dt=1/22.4;
@@ -72,7 +84,7 @@ def align_commands(trace):
     trace['commands'] = aligned
 
 
-SUPPORTED = {'Marine', 'SCV', 'Marauder', 'Reaper', 'Hellion', 'SiegeTank', 'SupplyDepot'}
+SUPPORTED = {'Marine', 'SCV', 'Marauder', 'Reaper', 'Hellion', 'SiegeTank', 'SiegeTankSieged', 'SupplyDepot'}
 
 if __name__ == '__main__':
     native, out = Path(sys.argv[1]), Path(sys.argv[2]); out.mkdir(parents=True, exist_ok=True)

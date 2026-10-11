@@ -1,5 +1,5 @@
 // SC2 group-feel follow-up: magic-box convergence, contact arrival, idle
-// yielding, immovable-body detours, allied push and ranged concave spots.
+// yielding, immovable-body detours, allied push and blocked ranged approach.
 import assert from 'node:assert/strict';
 import {reserveDestinations,createMovement} from '../dist/movement.js';
 import {PROFILES,SCALE} from '../dist/unit-profiles.js';
@@ -68,17 +68,25 @@ check('Siege Tanks push moving allies instead of splitting the overlap',()=>{
   assert(Math.abs(tank.x-500)<Math.abs(marine.x-(500+tank.r+5))/4);
 });
 
-check('A ranged unit walled off by a firing ally takes an open spot on its range arc',()=>{
+// Native 4.10 a_col3_e/_w/_n/_s: in a file attacking one held Marine, the
+// second Marine is stopped dead-on by the firing leader; in every heading it
+// turns right at full speed along the leader's rim and stops beside it as
+// soon as it is in range (the former range-arc slot sent the third unit to
+// the opposite flank, which native never does).
+check('A ranged unit blocked dead-on by a firing ally slides right along it into range',()=>{
   const enemy=unit('marine',900,600,{team:1});
-  const front=unit('marine',900-PROFILES.marine.weapon.range-2*PROFILES.marine.r+2,600,{combatTarget:enemy});
-  const back=unit('marine',front.x-24,600,{combatTarget:enemy,order:{kind:'attackMove',x:1200,y:600}});
+  const reach=PROFILES.marine.weapon.range+2*PROFILES.marine.r-1;
+  const front=unit('marine',900-reach,600,{combatTarget:enemy,firingHold:true});
+  const back=unit('marine',front.x-2*PROFILES.marine.r-.5,600,{combatTarget:enemy,order:{kind:'attackMove',x:1200,y:600}});
   const units=[enemy,front,back],movement=world(units);
-  const reach=back.weapon.range+back.r+enemy.r-1;
-  movement.begin();movement.move(back,enemy,DT,reach);
-  assert(back.rangeSlot?.angle!==null&&back.rangeSlot?.angle!==undefined,'slot chosen');
-  const slot={x:enemy.x+Math.cos(back.rangeSlot.angle)*back.rangeSlot.radius,y:enemy.y+Math.sin(back.rangeSlot.angle)*back.rangeSlot.radius};
-  assert(Math.hypot(slot.x-front.x,slot.y-front.y)>=front.r+back.r);
-  assert(Math.hypot(slot.x-enemy.x,slot.y-enemy.y)<=reach);
+  movement.begin();movement.move(back,enemy,DT,reach);movement.collision();
+  // Browser y points down: a native clockwise (right) turn moves +y here.
+  assert(back.vy>back.speed*.9&&Math.abs(back.vx)<back.speed*.3,'turns right at full speed');
+  let loops=1;
+  for(;loops<40&&Math.hypot(back.x-enemy.x,back.y-enemy.y)>reach+1;loops++){movement.begin();movement.move(back,enemy,DT,reach);movement.collision();}
+  assert(loops<20,'reaches range while sliding');
+  assert.equal(front.x,900-reach);assert.equal(front.y,600);
+  assert(Math.hypot(back.x-front.x,back.y-front.y)<2*front.r+8,'stays beside the leader');
 });
 
 console.log(checks+' SC2 group-feel checks passed.');
