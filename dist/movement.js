@@ -5,12 +5,12 @@ import {turnTowards,terrainRadius,SCALE} from './unit-profiles.js';
 
 // Custom local crowd solver, not Blizzard's navigation implementation.
 export function createMovement({entities,world,clear,openPoint,path,navVersion}) {
-  let cells=new Map(), starts=new Map(), requests=0;
+  let cells=new Map(), starts=new Map(), requests=0, frame=0;
   const length=(x,y)=>Math.hypot(x,y);
   const dist=(a,b)=>length(a.x-b.x,a.y-b.y);
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function begin() {
-    requests=0;cells=new Map();starts=new Map();path.begin?.();
+    requests=0;frame++;cells=new Map();starts=new Map();path.begin?.();
     for(const e of entities()) if(!e.building&&!e.loadedIn&&!e.insideRefinery&&e.hp>0&&!e.flying) {
       const key=Math.floor(e.x/56)+','+Math.floor(e.y/56);
       starts.set(e,{x:e.x,y:e.y});
@@ -42,6 +42,64 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       if(score<cost){cost=score;best=angle;}
     }
     return best;
+  }
+  // Idle allies step sideways out of a mover's lane rather than being shoved
+  // ahead of it. The chosen side is sticky for a moment so a unit inside a
+  // passing group keeps parting one way instead of oscillating between lanes.
+  const yieldable=(m,b)=>b.team===m.team&&!b.order&&!b.combatTarget&&!b.hold&&!b.sieged&&!b.transform&&!b.building&&
+    !(b.arrivalBatch&&b.arrivalBatch===m.arrivalBatch)&&length(b.vx||0,b.vy||0)<3;
+  function yieldDirection(m,b){
+    const v=length(m.vx||0,m.vy||0);if(v<3)return null;
+    const ux=m.vx/v,uy=m.vy/v,kept=b.yielding;
+    if(kept&&frame-kept.frame<=YIELD_MEMORY&&Math.abs(kept.x*ux+kept.y*uy)<.5){kept.frame=frame;return kept;}
+    const cross=(b.x-m.x)*uy-(b.y-m.y)*ux,side=Math.abs(cross)>1?(cross>=0?-1:1):(b.id%2?1:-1);
+    return b.yielding={x:-uy*side,y:ux*side,frame};
+  }
+  function planDetour(e,first,ux,uy,point){
+    const immovable=b=>b.hp>0&&!b.building&&!b.flying&&!b.loadedIn&&!b.insideRefinery&&(b.hold||b.sieged||b.team!==e.team);
+    const cluster=[first],seen=new Set(cluster);
+    for(let i=0;i<cluster.length&&cluster.length<64;i++)for(const c of entities())
+      if(!seen.has(c)&&c!==e&&c!==point&&immovable(c)&&dist(c,cluster[i])<c.r+cluster[i].r+2*e.r+1){seen.add(c);cluster.push(c);}
+    let lo=Infinity,hi=-Infinity,near=Infinity,far=-Infinity;
+    for(const c of cluster){
+      const lateral=(c.x-e.x)*-uy+(c.y-e.y)*ux,forward=(c.x-e.x)*ux+(c.y-e.y)*uy;
+      lo=Math.min(lo,lateral-c.r);hi=Math.max(hi,lateral+c.r);near=Math.min(near,forward-c.r);far=Math.max(far,forward+c.r);
+    }
+    const along=Math.max(0,(near+far)/2),sides=[lo-e.r-2,hi+e.r+2].sort((a,b)=>Math.abs(a)-Math.abs(b));
+    for(const offset of sides){
+      const q={x:e.x+ux*along-uy*offset,y:e.y+uy*along+ux*offset};
+      if(openPoint(q,terrainRadius(e)))return{...q,order:e.order,point,until:frame+DETOUR_LOOPS};
+    }
+    return null;
+  }
+  const firing=b=>b.hp>0&&!b.building&&!b.flying&&!b.loadedIn&&!b.insideRefinery&&length(b.vx||0,b.vy||0)<3&&(b.combatTarget||b.hold||b.sieged);
+  function rangeSlot(e,target,reach,dt){
+    const radius=reach-2,toward=Math.atan2(e.y-target.y,e.x-target.x);
+    const state=e.rangeSlot?.target===target?e.rangeSlot:(e.rangeSlot={target,angle:null,wait:0,base:toward});
+    state.wait=Math.max(0,state.wait-dt);
+    const allies=entities().filter(b=>b!==e&&b.team===e.team&&firing(b)&&dist(b,target)<=reach+2*(e.r+b.r)+e.speed*.5);
+    const occupied=q=>allies.some(b=>dist(q,b)<e.r+b.r+.5)||entities().some(b=>b!==e&&b.team===e.team&&b.rangeSlot?.target===target&&
+      b.rangeSlot.angle!==null&&dist(q,{x:target.x+Math.cos(b.rangeSlot.angle)*b.rangeSlot.radius,y:target.y+Math.sin(b.rangeSlot.angle)*b.rangeSlot.radius})<e.r+b.r+.5);
+    // Only units actually walled off by firing allies take a slot; a clear
+    // lane keeps the ordinary straight approach.
+    const blocked=allies.some(b=>{const bx=b.x-e.x,by=b.y-e.y,tx=target.x-e.x,ty=target.y-e.y,tl=length(tx,ty)||1;
+      const forward=(bx*tx+by*ty)/tl,cross=Math.abs(bx*ty-by*tx)/tl;return forward>0&&forward<dist(e,target)-reach+e.r+b.r+e.speed*.5&&cross<e.r+b.r+.5;});
+    if(state.angle!==null){
+      const q={x:target.x+Math.cos(state.angle)*state.radius,y:target.y+Math.sin(state.angle)*state.radius};
+      if(!allies.some(b=>dist(q,b)<e.r+b.r+.5)&&openPoint(q,terrainRadius(e)))return q;
+      state.angle=null;
+    }
+    if(!blocked||state.wait>0)return null;
+    state.wait=.15;
+    const step=(2*e.r+1)/radius;
+    // Spill around the flanks, but never wrap behind the target: a unit
+    // beyond the side of the fight is better off joining the next rank.
+    for(let i=1;i<Math.ceil(RANGE_SLOT_SPREAD/step);i++)for(const side of [1,-1]){
+      const angle=state.base+side*i*step,q={x:target.x+Math.cos(angle)*radius,y:target.y+Math.sin(angle)*radius};
+      if(!openPoint(q,terrainRadius(e))||occupied(q))continue;
+      state.angle=angle;state.radius=radius;return q;
+    }
+    return null;
   }
   function move(e,point,dt,stopAt=3) {
     if(e.sieged||e.transform||e.loadedIn)return false;
@@ -89,6 +147,14 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
         stopAt=0;
       }
     }else e.pursuitState=null;
+    // Ranged approach: stationary firing allies are obstacles, so units behind
+    // them spill around the ends to an open spot on their own range arc. This
+    // is what turns an attack-moving ball into SC2's natural concave.
+    const rangedPursuit=point===e.combatTarget&&point.hp>0&&!point.footprint&&!point.flying&&!combatPursuit&&stopAt>e.r+point.r;
+    if(rangedPursuit){
+      const slot=rangeSlot(e,point,stopAt,dt);
+      if(slot){p=slot;stopAt=0;}
+    }else e.rangeSlot=null;
     const exactPoint=stopAt===0&&!e.flying&&point===e.order&&['move','attackMove'].includes(e.order?.kind);
     if(!exactPoint)e.pointBrake=null;
     if(p.footprint&&stopAt>5){
@@ -110,7 +176,22 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       p=e.interaction.goal;stopAt=1;
     }
     const d=dist(e,p),tolerance=exactPoint?1e-6:stopAt+1;
-    if(d<=tolerance){e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;return true;}
+    if(d<=tolerance){e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;if(point===e.order)e.arrivedBatch=e.order.batch;return true;}
+    // SC2 group arrival: a converging unit stops once it touches a squadmate
+    // from the same command that has already arrived, so the group settles as
+    // one tight clump around the click instead of competing for the point.
+    if(point===e.order&&e.order?.formation==='packed'&&e.order.batch!==undefined&&!e.flying&&dist(e,point)<=(e.order.groupRadius||0)){
+      const done=()=>{e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;e.arrivedBatch=e.order.batch;e.packedStall=null;return true;};
+      // The leader only has to cover the click; a crowd can keep it from the
+      // exact center. Units that stop gaining on the point near it give up.
+      if(d<=e.r)return done();
+      if(e.packedStall?.order!==e.order)e.packedStall={order:e.order,best:d,time:0};
+      if(d<e.packedStall.best-1){e.packedStall.best=d;e.packedStall.time=0;}else if((e.packedStall.time+=dt)>=PACKED_STALL)return done();
+      for(const b of neighbors(e)){
+        if(b===e||b.team!==e.team||b.hp<=0||b.arrivedBatch!==e.order.batch||length(b.vx||0,b.vy||0)>=3)continue;
+        if(dist(e,b)<=e.r+b.r+ARRIVAL_CONTACT)return done();
+      }
+    }
     let goal=p;
     if(stopAt>5){const k=(d-stopAt)/d;goal={x:e.x+(p.x-e.x)*k,y:e.y+(p.y-e.y)*k};}
     let dest=goal;
@@ -170,6 +251,8 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       for(let i=e.nav.length-1;i>0;i--)if(clear(e,e.nav[i],radius)){e.nav.splice(0,i);break;}
       dest=e.nav[0];
     }else e.movementRequest=null;
+    if(e.detour&&(frame>e.detour.until||dist(e,e.detour)<e.r||e.detour.order!==e.order||e.detour.point!==point))e.detour=null;
+    if(e.detour&&!e.flying)dest=e.detour;
     let dx=dest.x-e.x,dy=dest.y-e.y,len=length(dx,dy);
     if(len<.001){e.nav=null;return false;}
     if(e.turnBeforeMove&&!e.flying){
@@ -189,6 +272,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
     const speed=e.speed*(e.stim?1.5:1)*(e.slow? .5:1);
     let vx=dx/len*speed,vy=dy/len*speed;
     const ux=vx/speed,uy=vy/speed;
+    let wall=null;
     if(!e.flying)for(const b of neighbors(e)) {
       if(b===e||b.hp<=0||b.insideRefinery||ignoreWorkerCollision(e,b)||ignoreConstructionCollision(e,b))continue;
       const formationPeers=point===e.order&&e.order?.formation==='preserved'&&b.order?.formation==='preserved'&&
@@ -200,10 +284,11 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       const settled=b.arrived&&b.arrivalBatch&&b.arrivalBatch===e.arrivalBatch&&!b.order;
       const anchored=b.hold||b.sieged||b.team!==e.team,pursuit=b===e.combatTarget;
       const bv=length(b.vx||0,b.vy||0),sameDirection=bv>3&&((b.vx*ux+b.vy*uy)/bv)>.75;
+      if(anchored&&!pursuit&&b!==point&&!b.building&&forward>0&&forward<gap+3&&Math.abs(cross)<gap)wall=b;
       if(!anchored&&!b.order&&!b.combatTarget&&forward>0&&forward<gap+Math.min(3,speed*dt*2)&&dd<gap+2&&Math.abs(cross)<gap) {
-        const side=Math.abs(cross)>1?(cross>=0?-1:1):(b.id%2?1:-1);
+        const side=Math.abs(cross)>1?(cross>=0?-1:1):(b.id%2?1:-1),lane=!settled&&yieldable(e,b)?yieldDirection(e,b):null;
         const yieldStep=speed*(settled?.15:.8)*dt;
-        const yieldPoint={x:b.x-uy*side*yieldStep,y:b.y+ux*side*yieldStep};
+        const yieldPoint=lane?{x:b.x+lane.x*yieldStep,y:b.y+lane.y*yieldStep}:{x:b.x-uy*side*yieldStep,y:b.y+ux*side*yieldStep};
         if(openPoint(yieldPoint,terrainRadius(b))){b.x=yieldPoint.x;b.y=yieldPoint.y;}
       }
       // Anticipate crossing traffic and anchored units. Ordinary idle allies
@@ -218,6 +303,10 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
         vx-=bx/dd*force;vy-=by/dd*force;
       }
     }
+    // Pressed against units that never yield (Hold, Siege, enemies): after a
+    // short contact, walk to the nearer edge of that whole body cluster.
+    e.anchorBlock=wall&&!e.detour?(e.anchorBlock||0)+dt:0;
+    if(wall&&!e.detour&&e.anchorBlock>=ANCHOR_DETOUR_DELAY){e.anchorBlock=0;e.detour=planDetour(e,wall,ux,uy,point);}
     const vl=length(vx,vy);if(vl>speed){vx*=speed/vl;vy*=speed/vl;}
     // Native 4.10 isolated Move traces show exact point endpoints and SCV
     // longitudinal braking at forward acceleration, not lateral acceleration.
@@ -271,8 +360,21 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
       const anchorA=a.hold||a.sieged||a.transform||(!movingA&&movingB&&(enemy||a.combatTarget));
       const anchorB=b.hold||b.sieged||b.transform||(!movingB&&movingA&&(enemy||b.combatTarget));
       if(anchorA&&anchorB)continue;
-      const wa=anchorA?0:anchorB?1:!movingA&&movingB?(sameBatch?.6:.85):!movingB&&movingA?(sameBatch?.4:.15):.5;
+      let wa=anchorA?0:anchorB?1:!movingA&&movingB?(sameBatch?.6:.85):!movingB&&movingA?(sameBatch?.4:.15):.5;
+      // AlliedPushPriority units (Siege Tank) shove even moving allies aside.
+      if(!enemy&&!anchorA&&!anchorB&&movingA&&movingB&&a.alliedPush!==b.alliedPush)wa=a.alliedPush?.1:.9;
       const overlap=(gap-d)*.95;
+      const [mover,idle]=movingA&&!movingB&&a.order&&yieldable(a,b)?[a,b]:movingB&&!movingA&&b.order&&yieldable(b,a)?[b,a]:[];
+      const lane=mover&&yieldDirection(mover,idle);
+      if(lane){
+        // The idle ally slides across the lane; the mover only gives back the
+        // normal share so it is briefly checked, not stopped, while it parts.
+        const sign=mover===a?1:-1,p={x:clamp(idle.x+lane.x*overlap,idle.r,world.w-idle.r),y:clamp(idle.y+lane.y*overlap,idle.r,world.h-idle.r)};
+        const q={x:clamp(mover.x+dx/d*overlap*.3*sign,mover.r,world.w-mover.r),y:clamp(mover.y+dy/d*overlap*.3*sign,mover.r,world.h-mover.r)};
+        if(openPoint(p,terrainRadius(idle))){idle.x=p.x;idle.y=p.y;}
+        if(openPoint(q,terrainRadius(mover))){mover.x=q.x;mover.y=q.y;}
+        continue;
+      }
       for(const [e,f,sign] of [[a,wa,1],[b,1-wa,-1]]) {
         const p={x:clamp(e.x+dx/d*overlap*f*sign,e.r,world.w-e.r),y:clamp(e.y+dy/d*overlap*f*sign,e.r,world.h-e.r)};
         if(openPoint(p,terrainRadius(e))){e.x=p.x;e.y=p.y;}
@@ -299,13 +401,27 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion})
 // footprint AABB fits in 6 game units on both axes. This is an observed rule,
 // not a claim about every current-patch formation condition.
 export const COMPACT_FORMATION_EXTENT=6*SCALE;
+// World-unit slack for touching an arrived squadmate (collision gap is .5).
+export const ARRIVAL_CONTACT=3;
+// Seconds without approaching the shared point before a crowded unit settles.
+export const PACKED_STALL=.5;
+// Largest angle around a target a blocked ranged unit walks for a firing spot.
+export const RANGE_SLOT_SPREAD=Math.PI*.4;
+// Movement loops an idle ally keeps its chosen sideways yield direction.
+export const YIELD_MEMORY=12;
+// Seconds pressed against immovable bodies before walking around them, and
+// the movement loops a chosen detour stays valid.
+export const ANCHOR_DETOUR_DELAY=.25,DETOUR_LOOPS=67;
 // Spread or obstructed layouts retain the custom compact landing fallback.
 export function reserveDestinations(movers,point,reachable) {
   if(movers.length<2)return;
   if(movers.every(m=>['move','attackMove'].includes(m.o.kind)&&!m.u.building&&!m.u.flying&&!m.u.sieged&&!m.u.transform)){
     const x0=Math.min(...movers.map(m=>m.u.x-m.u.r)),x1=Math.max(...movers.map(m=>m.u.x+m.u.r));
     const y0=Math.min(...movers.map(m=>m.u.y-m.u.r)),y1=Math.max(...movers.map(m=>m.u.y+m.u.r));
-    if(Math.max(x1-x0,y1-y0)<=COMPACT_FORMATION_EXTENT+1e-6){
+    // A click inside the group's own box converges instead of translating:
+    // that is the standard way to clump a small squad (magic box rule).
+    const inside=point.x>=x0&&point.x<=x1&&point.y>=y0&&point.y<=y1;
+    if(!inside&&Math.max(x1-x0,y1-y0)<=COMPACT_FORMATION_EXTENT+1e-6){
       const center={x:movers.reduce((sum,m)=>sum+m.u.x,0)/movers.length,
         y:movers.reduce((sum,m)=>sum+m.u.y,0)/movers.length};
       const slots=movers.map(m=>({x:point.x+m.u.x-center.x,y:point.y+m.u.y-center.y}));
@@ -327,17 +443,12 @@ export function reserveDestinations(movers,point,reachable) {
       }
     }
   }
-  const spacing=Math.max(...movers.map(m=>m.u.r*2+.75)),slots=[{...point}];
-  for(let ring=1;slots.length<movers.length;ring++) {
-    for(let side=0;side<6;side++)for(let step=0;step<ring&&slots.length<movers.length;step++) {
-      const a=side*Math.PI/3,b=(side+1)*Math.PI/3,t=step/ring;
-      slots.push({x:point.x+spacing*ring*(Math.cos(a)*(1-t)+Math.cos(b)*t),y:point.y+spacing*ring*(Math.sin(a)*(1-t)+Math.sin(b)*t)});
-    }
-  }
-  const radius=Math.max(...slots.map(s=>Math.hypot(s.x-point.x,s.y-point.y)));
-  for(const m of [...movers].sort((a,b)=>Math.hypot(a.u.x-point.x,a.u.y-point.y)-Math.hypot(b.u.x-point.x,b.u.y-point.y))) {
-    let best=0;
-    for(let i=1;i<slots.length;i++)if(Math.hypot(m.u.x-slots[i].x,m.u.y-slots[i].y)<Math.hypot(m.u.x-slots[best].x,m.u.y-slots[best].y))best=i;
-    m.o.arrival=reachable(slots.splice(best,1)[0],terrainRadius(m.u));m.o.arrivalRadius=radius;m.o.formation='packed';m.o.exactFormation=false;
+  // Spread groups converge on the shared point; arrival is resolved by contact
+  // with arrived squadmates in move(). The radius only bounds where contact
+  // arrival may happen, so a unit passing an arrived mate far away keeps going.
+  const blob=Math.sqrt(movers.reduce((sum,m)=>sum+m.u.r*m.u.r,0)/.8),largest=Math.max(...movers.map(m=>m.u.r));
+  for(const m of movers){
+    delete m.o.arrival;m.o.arrivalRadius=0;m.o.formation='packed';m.o.exactFormation=false;
+    m.o.groupSize=movers.length;m.o.groupRadius=2*blob+2*largest;
   }
 }

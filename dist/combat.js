@@ -4,7 +4,7 @@ import {SIEGE_WEAPON,FASTER,SCALE,turnTowards} from './unit-profiles.js';
 export function createCombat({entities,visible,move,research,shots,clock,onDamage}) {
   let missiles=[],processedThisLoop=new Set(),idleThisLoop=new Set(),helpThisLoop=new Set();
   // Core CGame defaults; exact native arbitration/phase ordering is separate.
-  const helpRadius=4*SCALE,helpPeriod=2/FASTER,idleMovementLimit=21*SCALE;
+  const helpRadius=4*SCALE,helpPeriod=2/FASTER,idleMovementLimit=21*SCALE,leashResetRadius=5*SCALE;
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const weapon=e=>e.sieged?SIEGE_WEAPON:e.weapon||{range:e.range,scan:e.range,minimum:0,period:e.cool,point:.12,backswing:.25,damage:e.damage,turret:true};
   const valid=(e,t,w)=>!!t&&t.hp>0&&(t.team!==e.team||e.order?.kind==='attack'&&e.order.target===t&&t!==e)&&!t.planned&&!t.loadedIn&&!t.insideRefinery&&(!t.flying||w.air)&&visible(e,t);
@@ -119,7 +119,9 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     const manual=o?.kind==='attack',defensive=e.acquireLevel==='Defensive'&&!['attackMove','patrol'].includes(o?.kind);
     const idleAuto=!o&&!e.hold&&!e.sieged&&!e.building&&!defensive;
     if(idleAuto&&e.combatAnchor&&dist(e,e.combatAnchor)>idleMovementLimit)e.combatReturning=true;
-    let rangeOnly=e.hold||e.sieged||e.building||defensive||idleAuto&&e.combatReturning;
+    // A leashed unit walks home without acquiring until it is back inside the
+    // catalog AcquireLeashResetRadius of its anchor.
+    let rangeOnly=e.hold||e.sieged||e.building||defensive||idleAuto&&e.combatReturning&&!(e.combatAnchor&&dist(e,e.combatAnchor)<=leashResetRadius);
     const newDamage=e.lastDamageAt>(e.lastAcquireResponseAt??-Infinity);
     e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;
     if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;e.combatResponseTarget=null;e.windup=null;e.consumedCombatHelp=e.combatHelp;return false;}
@@ -177,6 +179,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     if(manual&&target)o.lastSeen=e.attackLastSeen={x:target.x,y:target.y};
     e.combatTarget=target;if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
     if(target&&idleAuto&&!e.combatAnchor)e.combatAnchor={x:e.x,y:e.y};
+    if(target&&idleAuto&&e.combatReturning&&!rangeOnly)e.combatReturning=false;
     if(!target){
       e.windup=null;
       if(idleAuto&&e.combatReturning&&e.combatAnchor) {
