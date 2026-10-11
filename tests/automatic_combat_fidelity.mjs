@@ -106,9 +106,11 @@ check('Missile damage remembers launch origin rather than reading its hidden sou
   victim.hold=true;victim.response='Flee';const h=make([source,victim]);h.step();source.x=800;source.hidden=true;
   h.step(5);assert(victim.hp<1000);assert.deepEqual(victim.lastDamageSourcePosition,{x:500,y:42*SCALE});
 });
+// Native e_switch_amove, e_manual_chase m10/m20, e_leash_lanes*, c_leash_reaper:
+// the chase begins one loop after the backswing (13 loops after the shot loop).
 check('Automatic pursuit waits the observed Marine recovery boundary instead of auto-kiting',()=>{
   const source=unit(1,'marine',0,37*SCALE),target=unit(2,'marine',1,42.313*SCALE);target.damage=0;source.order={kind:'attack',target};
   const h=make([source,target]);h.step(2);assert.equal(source.visualShotSerial,1);h.step(6);target.x=43*SCALE;
-  h.step(5);assert.equal(h.moves.length,0);h.step();assert.equal(h.moves[0].loop,14);
+  h.step(6);assert.equal(h.moves.length,0);h.step();assert.equal(h.moves[0].loop,15);
 });
 console.log(`${checks} automatic combat fidelity checks passed.`);

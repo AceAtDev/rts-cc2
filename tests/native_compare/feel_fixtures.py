@@ -278,3 +278,112 @@ for _name in ['crossing_groups', 'amove_ball_vs_line', 'amove_vs_idle_ball', 'lo
 _spec = _copy.deepcopy(FIXTURES['b_arr_row8'])
 _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
 FIXTURES['d_jit_b_arr_row8'] = _spec
+# --- pursuit / leash probes (e_) ----------------------------------------------
+# Flat64 keeps two start Command Centers, placed per run on two of
+# (24.5|63.5, 22.5|61.5), plus mineral lines near the map edges (y < 23,
+# y > 61, x < 18, x > 70). The outer c_ lanes (y 18, 24.8, 58.8, 65.6) and Move
+# targets at x 10/80 run into them natively (paths bend, an idle unit next to
+# an enemy Command Center attacks it); the browser world (x 6.5..81.5,
+# y 17..67) has none of them. These lanes and targets keep clear.
+LANES_E = [32, 38.5, 45, 51.5]
+
+
+def lanes_e(enemy, ours, enemy_x, our_x, dy, step, hold=False):
+    return ([('s%d' % i, enemy, 2, [[enemy_x+step*i, y+dy]]) + (('hold',) if hold else ()) for i, y in enumerate(LANES_E)] +
+            [('m%d' % i, ours, 1, [[our_x, y]]) for i, y in enumerate(LANES_E)])
+
+
+def flee_e(turn, west=27, east=66):
+    return ([(2, 'move', 's%d' % i, (west, y)) for i, y in enumerate(LANES_E)] +
+            [(turn, 'move', 's%d' % i, (east, y)) for i, y in enumerate(LANES_E)])
+
+
+def order_e(loop, ability, point_x=22):
+    return [(loop, ability, 'm%d' % i, (point_x, y)) for i, y in enumerate(LANES_E)]
+
+
+FIXTURES['e_leash_lanes'] = dict(loops=230, units=lanes_e('Hellion', 'Reaper', 40, 30, 0, .117), commands=flee_e(22))
+FIXTURES['e_leash_lanes_hellion'] = dict(loops=230, units=lanes_e('Hellion', 'Hellion', 40, 30, 0, .133), commands=flee_e(24))
+FIXTURES['e_leash_lanes_marauder'] = dict(loops=300, units=lanes_e('Hellion', 'Marauder', 40, 30, 0, .07), commands=flee_e(22))
+# Same speeds as the Marauder case (2.25 chasing 4.25) with Marine weapon data.
+FIXTURES['e_leash_lanes_marine'] = dict(loops=300, units=lanes_e('Hellion', 'Marine', 40, 30, 0, .07), commands=flee_e(22))
+# Marauder chasing a slightly faster SCV (2.8125) and an equally fast Marauder.
+FIXTURES['e_leash_lanes_marauder_scv'] = dict(loops=420, units=lanes_e('SCV', 'Marauder', 39, 30, 0, .09), commands=flee_e(22))
+FIXTURES['e_leash_lanes_marauder_eq'] = dict(loops=420, units=lanes_e('Marauder', 'Marauder', 39.5, 30, 0, .09), commands=flee_e(24))
+# Attack-move / Patrol pursuit of a faster target: orders point away (west)
+# from the flee direction, so a chase is a pure detour from the order.
+FIXTURES['e_amove_lanes_marauder'] = dict(loops=320, units=lanes_e('Hellion', 'Marauder', 40, 30, 0, .07),
+                                          commands=order_e(8, 'attack') + flee_e(22))
+FIXTURES['e_patrol_lanes_marauder'] = dict(loops=320, units=lanes_e('Hellion', 'Marauder', 40, 30, 0, .07),
+                                           commands=order_e(8, 'patrol') + flee_e(22))
+FIXTURES['e_amove_lanes_eq'] = dict(loops=420, units=lanes_e('Marauder', 'Marauder', 39.5, 30, 0, .09),
+                                    commands=order_e(8, 'attack') + flee_e(24))
+# Retreat fixtures kept inside the browser world (c_amove_retreat/c_patrol_retreat
+# flee past native y 67 after the first hits).
+FIXTURES['e_amove_retreat'] = dict(loops=260, units=[('m', 'Marine', 1, [[34, 42]]), ('s', 'SCV', 2, [[43, 44.5]])],
+                                   commands=[(0, 'attack', 'm', (56, 42)), (22, 'move', 's', (46, 52))])
+FIXTURES['e_patrol_retreat'] = dict(loops=320, units=[('m', 'Marine', 1, [[34, 42]]), ('s', 'SCV', 2, [[43, 44.5]])],
+                                    commands=[(0, 'patrol', 'm', (52, 42)), (22, 'move', 's', (46, 48))])
+# Target-distance drop: the Hellion keeps running until the slower chaser is
+# more than 21 behind (three clear lanes; chasers start at x 24).
+LANES_D = [35, 41.75, 48.5]
+
+
+def drop_e(ours, extra=(), step=.07, turn=22, enemy='Hellion', x0=34):
+    # Attack-move/Patrol orders point west at x 19; only lanes 38.5 and 45
+    # reach it without walking around the geysers at (20.5, 34.5|48.5).
+    lanes_ = [38.5, 45] if extra else LANES_D
+    units = ([('s%d' % i, enemy, 2, [[x0+step*i, y]]) for i, y in enumerate(lanes_)] +
+             [('m%d' % i, ours, 1, [[24, y]]) for i, y in enumerate(lanes_)])
+    commands = ([(2, 'move', 's%d' % i, (27, y)) for i, y in enumerate(lanes_)] +
+                [(turn, 'move', 's%d' % i, (69, y)) for i, y in enumerate(lanes_)])
+    commands += [(loop, ability, 'm%d' % i, (19, y)) for loop, ability in extra for i, y in enumerate(lanes_)]
+    return dict(loops=300, units=units, commands=commands)
+
+
+FIXTURES['e_drop_marauder'] = drop_e('Marauder')
+FIXTURES['e_drop_marine'] = drop_e('Marine')
+FIXTURES['e_drop_marauder2'] = drop_e('Marauder', step=.11, turn=23)
+FIXTURES['e_drop_amove'] = drop_e('Marauder', extra=[(8, 'attack')])
+FIXTURES['e_drop_patrol'] = drop_e('Marauder', extra=[(8, 'patrol')])
+FIXTURES['e_drop_amove_marine'] = drop_e('Marine', extra=[(8, 'attack')])
+# Radii probes for the drop distance (edge or center): Siege Tank (r .875)
+# chasing Hellions; Attack-moving Marines chasing Reapers (r .375).
+FIXTURES['e_drop_tank'] = drop_e('SiegeTank', x0=35)
+FIXTURES['e_drop_tank2'] = drop_e('SiegeTank', x0=35, step=.13, turn=23)
+FIXTURES['e_drop_rr'] = drop_e('Marine', extra=[(8, 'attack')], enemy='Reaper', x0=33)
+FIXTURES['e_drop_rr2'] = drop_e('Marine', extra=[(8, 'attack')], enemy='Reaper', x0=33, step=.19, turn=23)
+FIXTURES['e_drop_tank3'] = drop_e('SiegeTank', x0=35.2, step=.21, turn=22)
+FIXTURES['e_drop_tank4'] = drop_e('SiegeTank', x0=34.9, step=.29, turn=24)
+FIXTURES['e_drop_tank5'] = drop_e('SiegeTank', x0=35.1, step=.05, turn=23)
+FIXTURES['e_drop_amove2'] = drop_e('Marauder', extra=[(8, 'attack')], step=.13, turn=23)
+FIXTURES['e_drop_patrol2'] = drop_e('Marauder', extra=[(8, 'patrol')], step=.13, turn=23)
+
+# Noise floors for the pursuit/leash fixtures (same nudge as the jit_ block).
+for _name in ['c_leash_lanes_marauder', 'c_patrol_retreat', 'c_leash_lanes', 'c_leash_lanes_hellion', 'c_switch_idle',
+              'c_leash_chase3', 'c_switch_amove', 'c_leash_chase2', 'c_amove_retreat', 'c_switch_patrol',
+              'e_amove_retreat', 'e_patrol_retreat', 'e_drop_marauder', 'e_leash_lanes']:
+    _spec = _copy.deepcopy(FIXTURES[_name])
+    _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
+    FIXTURES['jit_'+_name] = _spec
+# c_switch_*/c_leash_chase3 with the fleeing SCV stopping at x 66: its run to
+# (78, 42.8) bends around the x 72 mineral line natively (heading 4 degrees).
+for order in ('attack', 'patrol', None):
+    key = {'attack': 'amove', 'patrol': 'patrol', None: 'idle'}[order]
+    FIXTURES['e_switch_'+key] = dict(
+        loops=200, units=[('m', 'Marine', 1, [[30, 42]]), ('s', 'SCV', 2, [[38, 42.8]]), ('z', 'SCV', 2, [[47, 48]], 'hold')],
+        commands=([(0, order, 'm', (70, 42))] if order else [(2, 'move', 's', (20, 42.8))]) +
+                 [(30 if not order else 26, 'move', 's', (66, 42.8))])
+FIXTURES['e_leash_chase3'] = dict(loops=420, units=[('m', 'Marine', 1, [[30, 42]]), ('s', 'SCV', 2, [[38, 42.8]]),
+                                                    ('z', 'SCV', 2, [[44, 52]], 'hold')],
+                                  commands=[(2, 'move', 's', (20, 42.8)), (30, 'move', 's', (66, 42.8)),
+                                            (200, 'move', 'z', (44, 45.4))])
+for _name in ['e_switch_amove', 'e_switch_patrol', 'e_switch_idle', 'e_leash_chase3']:
+    _spec = _copy.deepcopy(FIXTURES[_name])
+    _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
+    FIXTURES['jit_'+_name] = _spec
+# Explicit Attack order on a target that runs: chase start after the shot.
+FIXTURES['e_manual_chase'] = dict(loops=120, units=[('s%d' % i, 'Hellion', 2, [[34+.07*i, y]]) for i, y in enumerate(LANES_D)] +
+                                  [('m%d' % i, 'Marine', 1, [[29.5, y]]) for i, y in enumerate(LANES_D)],
+                                  commands=[(0, 'attack', 'm%d' % i, 's%d' % i) for i in range(3)] +
+                                           [(4, 'move', 's%d' % i, (69, y)) for i, y in enumerate(LANES_D)])

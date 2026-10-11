@@ -173,7 +173,7 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
     }else e.pursuitState=null;
     // Ranged approach: blocked attackers slide along allies (see slide()).
     const rangedPursuit=point===e.combatTarget&&point.hp>0&&!point.footprint&&!point.flying&&!combatPursuit&&stopAt>e.r+point.r;
-    const exactPoint=stopAt===0&&!e.flying&&point===e.order&&['move','attackMove'].includes(e.order?.kind);
+    const exactPoint=stopAt===0&&!e.flying&&point===e.order&&['move','attackMove','flee'].includes(e.order?.kind);
     if(!exactPoint)e.pointBrake=null;
     if(p.footprint&&stopAt>5){
       const target=p,padding=Math.max(e.r+.1,stopAt-p.r),version=navVersion();
@@ -386,9 +386,19 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
     const desired=length(vx,vy);if(desired>limit){vx*=limit/desired;vy*=limit/desired;}
     const newSpeed=length(vx,vy);
     const accel=(pointBraking?deceleration:newSpeed>oldSpeed?e.acceleration:e.lateralAcceleration)||100000;
-    const reversing=vx*e.vx+vy*e.vy<0&&e.acceleration>10000;
-    const change=length(vx-e.vx,vy-e.vy),blend=reversing?1:Math.min(1,accel*dt/(change||1));
-    e.vx+=(vx-e.vx)*blend;e.vy+=(vy-e.vy)*blend;
+    if(STEER.instant&&newSpeed>1e-9){
+      // Native c_switch_*: an SCV (acceleration 2.5) running west at full
+      // speed and ordered east moves east at full speed on the next loop;
+      // the facing turns afterwards at the turn rate. Heading follows the
+      // steering immediately; only the speed ramps (acceleration up,
+      // braking/lateral down).
+      const speedNow=newSpeed>oldSpeed?Math.min(newSpeed,oldSpeed+accel*dt):Math.max(newSpeed,oldSpeed-accel*dt);
+      e.vx=vx/newSpeed*speedNow;e.vy=vy/newSpeed*speedNow;
+    }else{
+      const reversing=vx*e.vx+vy*e.vy<0&&e.acceleration>10000;
+      const change=length(vx-e.vx,vy-e.vy),blend=reversing?1:Math.min(1,accel*dt/(change||1));
+      e.vx+=(vx-e.vx)*blend;e.vy+=(vy-e.vy)*blend;
+    }
     let next={x:clamp(e.x+e.vx*dt,e.r,world.w-e.r),y:clamp(e.y+e.vy*dt,e.r,world.h-e.r)};
     if(exactPoint&&dist(dest,goal)<.001&&(e.vx*dx+e.vy*dy)/len*dt>=len&&clear(e,goal,radius)){
       next={...goal};e.vx=(next.x-e.x)/dt;e.vy=(next.y-e.y)/dt;
@@ -514,6 +524,8 @@ export const PUSH_RETURN={far:3,near:.5,period:32};
 // than at its current lateral offset (0). squad: 1 also swerves around
 // squadmates of the same Move command; squadSpacing scales their spacing push.
 export const AVOID={predict:1,squad:0,squadSpacing:1};
+// Velocity heading follows steering at once (see move()); 0 restores vector blending.
+export const STEER={instant:1};
 // Idle-ally yielding: lateral (sticky sideways slide) or plain contact push;
 // share is the overlap fraction an idle ally takes from a mover (native
 // b_push_idle_0: the idle body is carried, the mover keeps 15/16 speed);
