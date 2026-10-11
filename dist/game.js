@@ -270,8 +270,8 @@ function startDrill(key='movement'){
   for(let i=0;i<5;i++){const u=spawn('marine',0,880,930+i*24);stop(u);}
   for(let i=0;i<6;i++){const u=spawn('marine',0,880+i%2*24,1080+Math.floor(i/2)*24);stop(u,true);}
  }else if(key==='concave'){
-  for(let i=0;i<24;i++)add('marine',680+i%6*22,960+Math.floor(i/6)*22);
-  for(let i=0;i<16;i++){const u=spawn('marine',1,1000+i%4*22,1100+Math.floor(i/4)*22);stop(u);}
+  for(let i=0;i<24;i++)add('marine',680+i%6*22,850+Math.floor(i/6)*22);
+  for(let i=0;i<16;i++){const u=spawn('marine',1,1000+i%4*22,960+Math.floor(i/4)*22);stop(u);}
  }else{
   for(let i=0;i<4;i++)add('marauder',710,1000+i*34);
   for(let i=0;i<3;i++){foe('marauder',980+i*36,1000);foe('hellion',980+i*40,1110);}
