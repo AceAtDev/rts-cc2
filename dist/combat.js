@@ -3,12 +3,20 @@ import {SIEGE_WEAPON,FASTER,SCALE,turnTowards} from './unit-profiles.js';
 
 // Weapon random delay bounds in game seconds (CWeaponLegacy defaults).
 export const RANDOM_DELAY=[-.0625,.125],WEAPON_SEED=0x5c2;
-// Remaining cooldown (real seconds at Faster) below which target search runs.
-export const ACQUIRE_COOLDOWN_GATE=2.5/22.4+1e-6,ACQUIRE_SCAN_LOOPS=3;
+// Native c_scan_idle/c_scan_idle_hellion/c_scan_amove (24 lanes, absolute
+// game loops): idle, Attack-move and chase target scans run once every 8
+// loops, on the loop where game_loop % 8 equals the unit index % 8.
+export const SCAN_PERIOD=8;
+export const scanDue=(e,loop)=>((loop+(e.scanPhase??(e.id|0)))%SCAN_PERIOD+SCAN_PERIOD)%SCAN_PERIOD===0;
 export function createCombat({entities,visible,move,research,shots,clock,onDamage}) {
   let missiles=[],processedThisLoop=new Set(),idleThisLoop=new Set(),helpThisLoop=new Set();
   // Core CGame defaults; exact native arbitration/phase ordering is separate.
-  const helpRadius=4*SCALE,helpPeriod=2/FASTER,idleMovementLimit=21*SCALE,leashResetRadius=5*SCALE;
+  // Native c_leash_lanes(_hellion)/c_leash_chase2: an idle chaser gives up
+  // once it is more than AcquireLeashRadius (21) plus its own diameter from
+  // where it acquired: Marine/Reaper (r .375) drop past 21.75 (seen at
+  // 21.76-21.88, never at 21.52-21.66), Hellion (r .625) past 22.25 (seen at
+  // 22.28-22.39, never at 22.01-22.13).
+  const helpRadius=4*SCALE,helpPeriod=2/FASTER,leashRadius=21*SCALE;
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   // CWeaponLegacy RandomDelayMin/Max (-0.0625..0.125 game s) lengthen or
   // shorten each cooldown; a seeded generator keeps simulations reproducible.
@@ -65,7 +73,9 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
       // with an explicit lowered-Depot exception; larger targets are Directed.
       const splashTarget=t.r<1.25*SCALE||(t.type==='relay'&&t.lowered);
       if(w.splash&&splashTarget)for(const u of entities())if(u!==t&&u!==e&&u.hp>0&&!u.flying&&!u.loadedIn&&!u.insideRefinery&&!u.planned) {
-        const band=w.splash.find(([radius])=>dist(u,point)<=radius);
+        // Native c_siege_splash: a friendly Marine 0.78 from the impact (edge
+        // 0.405) took the full 40, so bands are measured to the unit's edge.
+        const band=w.splash.find(([radius])=>dist(u,point)-u.r<=radius);
         if(band)damage(e,u,w,band[1],origin); // Siege splash includes friendly ground units.
       }
     }
@@ -74,8 +84,11 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     e.visualShotSerial=(e.visualShotSerial||0)+1;e.visualShotAt=clock();
     const jitter=w.randomDelay===false?0:(RANDOM_DELAY[0]+random()*(RANDOM_DELAY[1]-RANDOM_DELAY[0]))/FASTER;
     e.cooldown=Math.max(0,w.period/(e.stim?1.5:1)+jitter);e.backswing=w.backswing/(e.stim?1.5:1);
+    e.lastAttackAt=clock();e.lastBackswing=e.backswing;
     const point={x:t.x,y:t.y};
-    if(w.missileSpeed)missiles.push({source:e,target:t,weapon:w,x:e.x,y:e.y,origin:{x:e.x,y:e.y}});
+    // Native c_first_Marauder/c_stop_hit_*: impact lands ceil(d/1.25)+1 loops
+    // after launch, so a missile starts travelling one loop after creation.
+    if(w.missileSpeed)missiles.push({source:e,target:t,weapon:w,x:e.x,y:e.y,origin:{x:e.x,y:e.y},wait:1});
     else impact(e,t,w,point);
     if(!w.line&&!w.missileSpeed)shots().push({x:e.x,y:e.y,tx:t.x,ty:t.y,tank:e.type==='tank',life:.12});
     if(w.burst>1)e.burst={target:t,weapon:w,left:w.burst-1,time:w.burstInterval};
@@ -99,6 +112,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     }
     for(const m of missiles) {
       if(m.target.hp<=0)continue;
+      if(m.wait>0){m.wait--;continue;}
       const d=dist(m,m.target),step=m.weapon.missileSpeed*dt;
       if(d<=step){impact(m.source,m.target,m.weapon,{x:m.target.x,y:m.target.y},m.origin);m.done=true;}
       else{m.x+=(m.target.x-m.x)/d*step;m.y+=(m.target.y-m.y)/d*step;}
@@ -131,12 +145,22 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     }
     const manual=o?.kind==='attack',defensive=e.acquireLevel==='Defensive'&&!['attackMove','patrol'].includes(o?.kind);
     const idleAuto=!o&&!e.hold&&!e.sieged&&!e.building&&!defensive;
-    if(idleAuto&&e.combatAnchor&&dist(e,e.combatAnchor)>idleMovementLimit)e.combatReturning=true;
-    // A leashed unit walks home without acquiring until it is back inside the
-    // catalog AcquireLeashResetRadius of its anchor.
-    let rangeOnly=e.hold||e.sieged||e.building||defensive||idleAuto&&e.combatReturning&&!(e.combatAnchor&&dist(e,e.combatAnchor)<=leashResetRadius);
-    const newDamage=e.lastDamageAt>(e.lastAcquireResponseAt??-Infinity);
-    e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;
+    if(idleAuto&&e.combatAnchor&&!e.combatReturning&&dist(e,e.combatAnchor)>leashRadius+2*e.r)e.combatReturning=true;
+    let rangeOnly=e.hold||e.sieged||e.building||defensive;
+    // Native c_stop_hit_*: the damaged unit takes its attacker as target in
+    // the damage loop and starts acting on the next loop, so damage dealt
+    // during this loop is answered on the following one.
+    const settled=(e.lastDamageAt??-Infinity)<clock()-1e-9;
+    const newDamage=settled&&e.lastDamageAt>(e.lastAcquireResponseAt??-Infinity);
+    if(settled)e.lastAcquireResponseAt=e.lastDamageAt??-Infinity;
+    // Native c_leash_chase2: the way home is a plain Move (order 16). The
+    // Marine walked past an enemy SCV 3.4 from its path and neither scans nor
+    // answers damage until it is back at its anchor.
+    if(idleAuto&&e.combatReturning) {
+      e.windup=null;e.combatTarget=null;e.combatResponseTarget=null;e.lostTargetScan=false;e.consumedCombatHelp=e.combatHelp;
+      if(e.combatAnchor&&!(dist(e,e.combatAnchor)<=1||move(e,e.combatAnchor,dt,0)))return true;
+      e.combatAnchor=null;e.combatReturning=false;e.vx=e.vy=0;
+    }
     if(['move','follow','land','flee'].includes(o?.kind)){e.combatTarget=null;e.combatResponseTarget=null;e.windup=null;e.consumedCombatHelp=e.combatHelp;return false;}
     let target=manual?o.target:e.combatTarget;
     const windupSlop=t=>e.windup?.target===t?(w.rangeSlop||0):0;
@@ -144,7 +168,6 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     // Native AttackMove/Patrol retain a team-visible acquired target beyond
     // personal vision distance. Idle pursuit instead belongs to its origin.
     if(!valid(e,target,w)||(!manual&&rangeOnly&&!inRange(e,target,w,windupSlop(target))))target=null;
-    if(!target&&e.combatTarget&&idleAuto&&e.combatAnchor){e.combatReturning=true;rangeOnly=true;}
     if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
     // Catalog weapon damage requests Acquire response. Retaliation uses only a
     // visible attacker, bounded by vision; its precise native leash is unknown.
@@ -158,26 +181,38 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
       target=attacker;e.combatResponseTarget=attacker;
     }
     target=assistance(e,w,o,target,rangeOnly);
-    e.acquireTime=(e.acquireTime||0)-dt;
-    // Native traces: a unit that lost its target searches again only once its
-    // weapon is within two loops of ready, even when an enemy is in range.
-    // Searches run on a per-unit three-loop schedule; together with the gate
-    // this reproduces the native spread of remaining cooldown at acquisition.
-    const loop=Math.round(clock()*22.4),scanLoop=(loop+(e.id|0))%ACQUIRE_SCAN_LOOPS===0;
+    // Native acq_delay_00..15, patrol_engage, c_siege_min, c_first_*: after a
+    // target is lost the unit stays in its attack until the weapon backswing
+    // ends (Marine 12 loops, Siege Tank 8, after the damage loop), whatever
+    // the cooldown. The next search is seen one loop after the backswing; the
+    // unit stands still until then and only resumes its order (Patrol route,
+    // idle return) in the loop that search finds nothing.
     if(target)e.lostTargetScan=false;else if(e.combatTarget&&!valid(e,e.combatTarget,w))e.lostTargetScan=true;
-    const searching=!target&&(e.cooldown>ACQUIRE_COOLDOWN_GATE||e.lostTargetScan&&!scanLoop);
-    if(!manual&&!searching&&(e.acquireTime<=0||!target)) {
-      e.acquireTime=.1;
+    const recovering=!target&&e.lostTargetScan&&clock()-(e.lastAttackAt??-Infinity)<(e.lastBackswing||0)+dt-1e-6;
+    if(recovering&&!manual){e.windup=null;e.vx=e.vy=0;return true;}
+    // The post-backswing search is immediate; every other search waits for
+    // the unit's 8-loop scan slot.
+    const immediate=!target&&e.lostTargetScan;
+    // Its reach for idle units is unmeasured; keep the former conservative
+    // in-weapon-range rule before the walk home.
+    if(immediate&&idleAuto&&e.combatAnchor)rangeOnly=true;
+    if(!manual&&(immediate||scanDue(e,Math.round(clock()*22.4)))) {
+      e.lostTargetScan=false;
       let best=target;
-      // AttackMove/Patrol contribute to the nearby fight instead of following
-      // an equally ranked retreater past an available in-range opponent. Keep
-      // admitted windups and explicit focus-fire/idle target persistence.
-      const replaceRetreating=['attackMove','patrol'].includes(o?.kind)&&target&&!inRange(e,target,w,windupSlop(target));
+      // Native c_switch_amove/_patrol/_idle and c_leash_chase: a unit chasing
+      // an automatic target out of weapon range switches, on its scan slot, to
+      // an equally ranked opponent inside scan range (5.25 from the path,
+      // outside weapon range) that is closer, or to one already in weapon
+      // range. Admitted windups and explicit focus fire are kept. While the
+      // current target is still inside scan range only in-weapon-range
+      // opponents replace it (keeps the measured crowd fights unchanged).
+      const pursuing=target&&!inRange(e,target,w,windupSlop(target));
+      const lost=pursuing&&surface(e,target).distance-e.r>Math.max(w.scan,w.range);
       for(const t of entities())if(valid(e,t,w)&&surface(e,t).distance-e.r<=Math.max(w.scan,w.range)&&surface(e,t).distance-e.r>=w.minimum) {
         if(rangeOnly&&!inRange(e,t,w))continue;
         const closer=!best||surface(e,t).distance<surface(e,best).distance;
         if(!best||rank(t)>rank(best)||rank(t)===rank(best)&&
-          (!target&&closer||replaceRetreating&&inRange(e,t,w)&&(!inRange(e,best,w)||closer)))best=t;
+          (!target&&closer||pursuing&&(lost&&closer||inRange(e,t,w)&&(!inRange(e,best,w)||closer))))best=t;
       }
       target=best;
     }
@@ -199,34 +234,40 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     if(manual&&target)o.lastSeen=e.attackLastSeen={x:target.x,y:target.y};
     e.combatTarget=target;if(e.combatResponseTarget!==target)e.combatResponseTarget=null;
     if(target&&idleAuto&&!e.combatAnchor)e.combatAnchor={x:e.x,y:e.y};
-    if(target&&idleAuto&&e.combatReturning&&!rangeOnly)e.combatReturning=false;
     if(!target){
       e.windup=null;
-      if(idleAuto&&e.combatReturning&&e.combatAnchor) {
-        // Return interruption is a conservative custom policy: defend inside
-        // weapon range, never begin another distant chase before reaching home.
+      // Native leash_reacquire/c_leash_chase: an idle unit whose target is gone
+      // (and whose post-backswing search found nothing) walks back home.
+      if(idleAuto&&e.combatAnchor) {
+        e.combatReturning=true;
         if(dist(e,e.combatAnchor)<=1||move(e,e.combatAnchor,dt,0)) {
           e.combatAnchor=null;e.combatReturning=false;e.vx=e.vy=0;
         }else return true;
       }
       if(!o&&!e.hold&&!e.sieged&&Math.hypot(e.vx||0,e.vy||0)<1e-8)idleThisLoop.add(e);return false;
     }
+    let arrived=false;
     if(!inRange(e,target,w,windupSlop(target))) {
       e.windup=null;
       // Controlled native assistance assigns a target on the damage loop,
       // then begins approach on the following normal loop, in either order.
       if(e.combatHelpApproachAt===clock()){e.vx=e.vy=0;return true;}
       if(e.backswing>0){e.vx=e.vy=0;return true;}
-      if(!e.hold&&!e.sieged&&!e.building)move(e,target,dt,w.range+e.r+target.r-1);
-      else e.vx=e.vy=0;
-      return true;
+      if(e.hold||e.sieged||e.building){e.vx=e.vy=0;return true;}
+      move(e,target,dt,w.range+e.r+target.r-1);
+      // Native c_stop_hit_* and c_leash_chase3: the attack starts in the loop
+      // whose movement brings the unit into range. Reaper/Marauder (point 0)
+      // fire in that loop; Marine (.05) one loop and Hellion (.25) four loops
+      // later.
+      if(!inRange(e,target,w))return true;
+      arrived=true;
     }
-    e.vx=e.vy=0;
-    const facing=Math.atan2(target.y-e.y,target.x-e.x),rate=w.turret?(e.type==='hellion'?999.8437:360)*Math.PI/180*FASTER:e.turnRate;
+    if(!arrived)e.vx=e.vy=0;
+    const facing=Math.atan2(target.y-e.y,target.x-e.x),rate=w.turret?(w.turretRate??360)*Math.PI/180*FASTER:e.turnRate;
     if(w.turret)e.turretAngle=turnTowards(e.turretAngle??e.angle,facing,rate||20,dt);
-    else e.angle=turnTowards(e.angle,facing,rate||20,dt);
+    else if(!arrived)e.angle=turnTowards(e.angle,facing,rate||20,dt);
     const angle=w.turret?e.turretAngle:e.angle,error=Math.abs(Math.atan2(Math.sin(facing-angle),Math.cos(facing-angle)));
-    if(error>.12)return true;
+    if(error>.12&&!(w.arc>=360))return true;
     const point=w.point/(e.stim?1.5:1);
     // A positive damage point begins on this loop; no earlier elapsed time
     // belongs to that new phase. Repeat admission includes this creation loop

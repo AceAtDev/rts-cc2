@@ -50,7 +50,7 @@ Open <http://localhost:8000> in a modern browser with WebGL enabled. Choose **St
 
 - A documented 22.4 Hz Faster simulation schedule with retained backlog and interpolated Three.js rendering.
 - Radius-aware A* navigation, shared route corridors, cached walkability grids, and bounded incremental fallback searches.
-- Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, compact arrivals, and anchored Hold/Siege units.
+- Per-unit movement profiles, immediate infantry reversals, local avoidance, sideways idle yielding, magic-box group moves, contact-chained clump arrivals, detours around Hold/Siege blocks, and attack-move concaves.
 - Explicit worker targets, fog-safe Follow/Attack intent, pursuit isolated from march slots, and stable moving-target planning.
 - Persistent combat targets, visible-attacker response, explicit Move/Hold preservation, cancelable windup, cooldowns, projectiles, Reaper bursts/regeneration, flame lines, and radius-dependent Siege splash.
 - Physical number-key groups, all ten assignable HUD slots, right-click assignment/stealing, cargo memory, remembered gas workers restored after extraction, and interrupted double-tap handling.
@@ -88,6 +88,7 @@ The implemented unit subset is SCV, Marine, Marauder, Reaper, Hellion, and Siege
 - `dist/construction.js`, `dist/transport.js`, `dist/repair-autocast.js`: construction service motion, passenger lifecycle and context-preserving automatic repair.
 - `dist/order-queues.js`: transactional order/rally admission, lifecycle cleanup and complete birth queues.
 - [Completed six-gap pass](docs/remaining-controls-integration.md): implemented behaviors, evidence and practical fidelity limits.
+- [SC2 group-feel pass](docs/sc2-feel-pass.md): converging contact arrival, magic-box clicks, idle-ally yielding, Hold-block detours, Tank allied push and attack-move concaves.
 - `dist/combat.js`: acquisition, weapon phases, projectiles, damage, and regeneration.
 - `docs/unit-control-research.md`: evidence, implementation reasoning, and fidelity gaps.
 - `docs/gameplay-audit-followup.md`, `docs/visual-design-followup.md`: reproduced failures and reference-driven changes.
@@ -114,6 +115,7 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m playwright install chromium
 python3 tests/remaining_details_integration.py
 python3 tests/construction_integration.py
+node tests/sc2_feel_followup.mjs
 node tests/construction_fidelity.mjs
 node tests/transport_fidelity.mjs
 node tests/repair_autocast_fidelity.mjs

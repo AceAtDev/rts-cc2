@@ -5,7 +5,8 @@ import {PROFILES,SCALE} from '../dist/unit-profiles.js';
 const unit=(id,x,team=0,type='marine')=>({...PROFILES[type],id,type,x,y:500,team,
   hp:1000,maxhp:1000,damage:PROFILES[type].weapon.damage,cooldown:0,backswing:0,
   angle:0,turretAngle:0,vx:0,vy:0,kills:0,hold:false,vision:9*SCALE,
-  order:null,orders:[]});
+  order:null,orders:[],scanPhase:7});
+// scanPhase 7 puts the first simulated loop on the unit's native 8-loop scan slot.
 const make=(units)=>{
   let now=0;const moves=[],shots=[];
   const combat=createCombat({entities:()=>units,visible:(e,t)=>!t.hidden,
@@ -51,7 +52,8 @@ check('Fog fallback has no live target reference for Shift waypoint rendering',(
 check('Reappearing explicit target overrides a nearer automatic opportunity',()=>{
   const a=unit(1,500),b=unit(2,660,1),nearer=unit(3,610,1),h=make([a,b,nearer]);
   a.order={kind:'attack',target:b,acceptedLoop:42};h.combat.acceptOrder(a);b.hidden=true;h.step(a);
-  h.step(a);assert.equal(a.combatTarget,nearer);b.hidden=false;h.step(a);
+  // Automatic scans run on the unit's 8-loop slot (native c_scan_*).
+  for(let i=0;i<8&&a.combatTarget!==nearer;i++)h.step(a);assert.equal(a.combatTarget,nearer);b.hidden=false;h.step(a);
   assert.equal(a.order.kind,'attack');assert.equal(a.order.target,b);assert.equal(a.combatTarget,b);
   assert.equal(a.order.acceptedLoop,42);assert.equal(a.attackTargetMemory,null);
 });

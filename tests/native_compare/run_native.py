@@ -50,7 +50,7 @@ if __name__ == '__main__':
     names = sys.argv[2:] or list(FIXTURES)
     lab = NativeLab()
     try:
-        print('native', lab.ping.game_version, flush=True)
+        print('native', lab.ping.game_version, 'playable', str(lab.info.start_raw.playable_area).replace('\n', ' '), flush=True)
         for name in names:
             started = time.time()
             trace = run(lab, name, FIXTURES[name], outdir)
