@@ -26,16 +26,17 @@ def run(lab, name, spec, outdir):
     lab.step(SETTLE)
     resolve = lambda ref: sum((groups[g] for g in ([ref] if isinstance(ref, str) else ref)), [])
     schedule = {}
-    for loop, ability, who, where in spec['commands']:
-        def fire(ability=ability, who=who, where=where):
+    for loop, ability, who, where, *flags in spec['commands']:
+        # Optional fifth element 'queued' appends the order (Shift).
+        def fire(ability=ability, who=who, where=where, queued='queued' in flags):
             tags = resolve(who)
             if ability == 'kill':
                 from s2clientprotocol import debug_pb2 as dbg
                 lab.debug([dbg.DebugCommand(kill_unit=dbg.DebugKillUnit(tag=tags))])
             elif isinstance(where, str):
-                lab.command(ability, tags, target=groups[where][0])
+                lab.command(ability, tags, target=groups[where][0], queued=queued)
             else:
-                lab.command(ability, tags, point=where)
+                lab.command(ability, tags, point=where, queued=queued)
         schedule.setdefault(loop, []).append(fire)
     tags = [int(m['tag']) for m in meta]
     frames = lab.record(spec['loops'], tags, {k: (lambda fs=v: [f() for f in fs]) for k, v in schedule.items()})

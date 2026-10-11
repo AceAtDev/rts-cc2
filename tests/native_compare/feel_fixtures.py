@@ -387,3 +387,67 @@ FIXTURES['e_manual_chase'] = dict(loops=120, units=[('s%d' % i, 'Hellion', 2, [[
                                   [('m%d' % i, 'Marine', 1, [[29.5, y]]) for i, y in enumerate(LANES_D)],
                                   commands=[(0, 'attack', 'm%d' % i, 's%d' % i) for i in range(3)] +
                                            [(4, 'move', 's%d' % i, (69, y)) for i, y in enumerate(LANES_D)])
+
+# --- held-out validation set (f_) ---------------------------------------------
+# Scenarios not used for any fit: mixed types, crossing traffic, depots, kiting,
+# Stop versus Hold, patrol, shift-queued waypoints. All inside the clear centre
+# of Flat64 (x 26..62, y 30..54). A fifth command element 'queued' appends.
+FIXTURES['f_mixed_depot_choke'] = dict(loops=240, units=[
+    ('m', 'Marine', 1, grid(33, 40, 3, 2, 1.0)), ('r', 'Marauder', 1, line(31, 39.5, 3, 0, 1.4)),
+    ('h', 'Hellion', 1, line(35.5, 39.5, 2, 0, 1.6)),
+    ('d', 'SupplyDepot', 1, [[44, 35], [44, 37], [44, 39], [44, 44], [44, 46], [44, 48]])],
+    commands=[(0, 'move', ['m', 'r', 'h'], (54, 41.5))])
+FIXTURES['f_cross45'] = dict(loops=200, units=[('a', 'Marine', 1, grid(30, 32, 3, 2, 1.0)),
+                                               ('b', 'Marauder', 1, grid(31, 44, 2, 2, 1.3))],
+                             commands=[(0, 'move', 'a', (52, 54)), (0, 'move', 'b', (60, 44.6))])
+FIXTURES['f_marauder_amove_hellions'] = dict(loops=200, units=[('m', 'Marauder', 1, grid(32, 40, 2, 2, 1.4)),
+                                                               ('e', 'Hellion', 2, line(46, 39.5, 4, 0, 1.5))],
+                                             commands=[(0, 'attack', 'm', (58, 42))])
+FIXTURES['f_hellion_runby'] = dict(loops=160, units=[('h', 'Hellion', 1, line(30, 40.5, 3, 0, 1.5)),
+                                                     ('e', 'Marine', 2, grid(43, 39.5, 2, 3, 1.6))],
+                                   commands=[(0, 'move', 'h', (60, 42))])
+FIXTURES['f_reaper_kite'] = dict(loops=170, units=[('r', 'Reaper', 1, [[38, 41.2], [38, 42.8]]),
+                                                   ('e', 'Marine', 2, line(45.5, 40.8, 3, 0, 1.2))],
+                                 commands=[(0, 'attack', 'r', 'e'), (30, 'move', 'r', (31, 42)), (58, 'attack', 'r', 'e'),
+                                           (92, 'move', 'r', (29, 42)), (120, 'attack', 'r', 'e')])
+FIXTURES['f_stop_vs_hold'] = dict(loops=170, units=[('s', 'Marine', 1, line(33, 37.4, 3, 0, .8)),
+                                                    ('h', 'Marine', 1, line(33, 45.4, 3, 0, .8)),
+                                                    ('e', 'Marauder', 2, [[43, 38.2], [43, 46.2]], 'hold')],
+                                  commands=[(0, 'move', ['s', 'h'], (60, 42)), (14, 'stop', 's', None), (14, 'hold', 'h', None)])
+FIXTURES['f_patrol_pair_cross'] = dict(loops=220, units=[('m', 'Marine', 1, [[32, 41], [32, 42.6]]),
+                                                         ('s', 'SCV', 2, [[45, 52], [46.2, 52.6]])],
+                                       commands=[(0, 'patrol', 'm', (56, 42)), (0, 'move', 's', (45.6, 30))])
+FIXTURES['f_tank_marine_amove'] = dict(loops=200, units=[('t', 'SiegeTank', 1, [[30, 40], [30, 43.6]]),
+                                                         ('m', 'Marine', 1, grid(33, 40, 3, 2, 1.0)),
+                                                         ('e', 'Marine', 2, line(50, 39.5, 6, 0, 1.0), 'hold')],
+                                       commands=[(0, 'attack', ['t', 'm'], (58, 42))])
+FIXTURES['f_shift_waypoints'] = dict(loops=230, units=[('m', 'Marine', 1, grid(32, 40, 4, 2, 1.0))],
+                                     commands=[(0, 'move', 'm', (44, 33)), (0, 'move', 'm', (54, 42), 'queued'),
+                                               (0, 'move', 'm', (44, 51), 'queued')])
+FIXTURES['f_reverse_mixed'] = dict(loops=150, units=[('m', 'Marine', 1, grid(38, 41, 3, 2, 1.0)),
+                                                     ('r', 'Marauder', 1, line(36, 40.8, 2, 0, 1.6))],
+                                   commands=[(0, 'move', ['m', 'r'], (58, 48)), (28, 'move', ['m', 'r'], (30, 35))])
+FIXTURES['f_depot_pocket'] = dict(loops=200, units=[('m', 'Marine', 1, grid(33, 40, 3, 2, 1.0)),
+                                                    ('d', 'SupplyDepot', 1, [[50, 38], [50, 40], [50, 42], [50, 44], [50, 46],
+                                                                             [48, 38], [46, 38], [48, 46], [46, 46]])],
+                                  commands=[(0, 'move', 'm', (47.5, 42))])
+FIXTURES['f_mixed_push_idle'] = dict(loops=180, units=[('m', 'Marine', 1, grid(32, 40.5, 2, 2, .9)),
+                                                       ('w', 'SCV', 1, grid(31, 43, 2, 1, .9)),
+                                                       ('i', 'Marauder', 1, grid(40, 39.8, 2, 3, 1.25))],
+                                       commands=[(0, 'move', ['m', 'w'], (54, 42))])
+# Shift-queued waypoint probes (b_ prefix: mechanics probes, not held out).
+FIXTURES['b_queue_hellion'] = dict(loops=200, units=[('h', 'Hellion', 1, line(32, 40, 3, 0, 1.5))],
+                                   commands=[(0, 'move', 'h', (44, 34)), (0, 'move', 'h', (54, 44), 'queued'),
+                                             (0, 'move', 'h', (40, 50), 'queued')])
+FIXTURES['b_queue_scv'] = dict(loops=200, units=[('s', 'SCV', 1, [[32, 42]])],
+                               commands=[(0, 'move', 's', (40, 36)), (0, 'move', 's', (50, 44), 'queued'),
+                                         (0, 'move', 's', (40, 48), 'queued')])
+FIXTURES['b_queue_amove'] = dict(loops=200, units=[('m', 'Marine', 1, [[32, 42]]), ('r', 'Marauder', 1, [[32, 46]])],
+                                 commands=[(0, 'attack', 'm', (40, 36)), (0, 'attack', 'm', (50, 44), 'queued'),
+                                           (0, 'move', 'r', (40, 50)), (0, 'move', 'r', (50, 46), 'queued')])
+FIXTURES['b_queue_patrol'] = dict(loops=260, units=[('m', 'Marine', 1, [[32, 42]])],
+                                  commands=[(0, 'move', 'm', (40, 36)), (0, 'patrol', 'm', (50, 44), 'queued')])
+for _name in [k for k in FIXTURES if k.startswith('f_')]:
+    _spec = _copy.deepcopy(FIXTURES[_name])
+    _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
+    FIXTURES['jit_'+_name] = _spec

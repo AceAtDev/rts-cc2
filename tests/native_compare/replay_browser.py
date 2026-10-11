@@ -37,15 +37,17 @@ for(const m of trace.units){const n=f0[m.tag],e=byTag.get(m.tag);if(n?.target&&b
 // was hit just before it and flees 5 away) continues in the browser.
 for(const m of trace.units){const n=f0[m.tag],e=byTag.get(m.tag),o=n?.orders?.[0];if(e&&o&&o[0]===16&&o[2]&&!o[1]){const p=toB(o[2][0],o[2][1]);g.issueGroup([{u:e,o:{kind:'move',x:p.x,y:p.y}}],p,false);}}
 const frames=[],dt=1/22.4;
-const fire=([loop,ability,who,where])=>{const units=(Array.isArray(who)?who:[who]).flatMap(k=>groups[k]||[]);
- if(ability==='kill'){for(const u of units)u.hp=0;return;}
+const fire=([loop,ability,who,where,...flags])=>{const units=(Array.isArray(who)?who:[who]).flatMap(k=>groups[k]||[]).filter(u=>u.hp>0);
+ if(ability==='kill'){for(const u of units)u.hp=0;return;}if(!units.length)return;
+ // Optional fifth element 'queued' appends (Shift); Stop/Hold take no point.
+ const append=flags.includes('queued');
+ if(ability==='stop'||ability==='hold'){for(const u of units){if(append&&u.order)g.issue(u,{kind:ability},true);else g.stop(u,ability==='hold');}return;}
  const team=units[0].team;const point=typeof where==='string'?null:toB(where[0],where[1]),target=typeof where==='string'?groups[where][0]:null;
  // Raw point commands never smart-target a unit near the point, so issue
  // the resolved orders through the shared group path (one batch per command).
  const order=u=>target?{kind:ability==='attack'?'attack':'follow',target}:ability==='attack'?{kind:'attackMove',x:point.x,y:point.y}:
-  ability==='patrol'?{kind:'patrol',x:point.x,y:point.y,origin:{x:u.x,y:u.y},out:true}:{kind:ability,x:point.x,y:point.y};
- if(ability==='kill'){for(const u of units)u.hp=0;return;}
- g.issueGroup(units.map(u=>({u,o:order(u)})),point||target,false);};
+  ability==='patrol'?{kind:'patrol',x:point.x,y:point.y,origin:append&&u.order?null:{x:u.x,y:u.y},out:true}:{kind:ability,x:point.x,y:point.y};
+ g.issueGroup(units.map(u=>({u,o:order(u)})),point||target,append);};
 // Debug kills resolve a few loops after the request natively; kill on the
 // loop before the victim first disappears from the native observations.
 const killLoop=c=>{const victims=(Array.isArray(c[2])?c[2]:[c[2]]).flatMap(k=>trace.units.filter(m=>m.group===k).map(m=>m.tag));
