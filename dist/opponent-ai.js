@@ -2,7 +2,7 @@ import {GRID} from './geometry.js';
 
 // This is a fair, bounded policy for this map/subset, not Blizzard's AI script.
 export function createOpponentAI({team=1,defs,entities,minerals,geysers,clock,
-  visible,used,capacity,wallet,placement,build,train,addon,issue,issueGroup,world}){
+  visible,used,capacity,wallet,placement,build,train,addon,issue,issueGroup,world,tuning=()=>({})}){
   const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const alive=e=>e.hp>0&&!e.loadedIn;
   const assigned=w=>w.order?.kind==='return'?w.order.resume:w.order;
@@ -123,7 +123,9 @@ export function createOpponentAI({team=1,defs,entities,minerals,geysers,clock,
     }
     const reserves=army.filter(e=>!wave?.ids.has(e.id));
     const staged=reserves.filter(e=>distance(e,commands.get(e.id)?.role==='gather'?commands.get(e.id).arrival:gatherPoint(e,stage))<3*GRID);
-    if(!wave&&knownTarget&&reserves.length>=8&&now-lastWave>45&&staged.length>=Math.ceil(reserves.length*.75)){
+    // Difficulty only changes when and how big attack waves are, never income or vision.
+    const {waveSize=8,wavePeriod=45,firstWave=0}=tuning();
+    if(!wave&&knownTarget&&now>=firstWave&&reserves.length>=waveSize&&now-lastWave>wavePeriod&&staged.length>=Math.ceil(reserves.length*.75)){
       wave={ids:new Set(reserves.map(e=>e.id)),initial:reserves.length,target:{x:knownTarget.x,y:knownTarget.y}};lastWave=now;scoutId=null;mode='attack';
       commandGroup(reserves,wave.target,'attack');return;
     }
