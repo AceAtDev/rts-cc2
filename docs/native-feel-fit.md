@@ -35,6 +35,10 @@ Every row below replaced an earlier guess that a native trace contradicted. The 
 | Behavior | Native evidence | Browser rule |
 | --- | --- | --- |
 | Group arrival | Every mover stops at a whole multiple k of its own radius from the click: 2, 3, 4, 6, 8, then roughly 0.5q + 5.3. k is set by q, the area of squadmates already resting on the point in units of the mover's own area (`g_` and `h_` probes; k = 5 and 7 never occur). Walking squadmates count. Idle units and units outside the command never count. | `stopMultiple(q)` and `stopArea()`. A unit carried onto the point counts only after resting there 12 loops. |
+| Squad already on the point | When squadmates stand on the click point, the rest stop at the multiple set by what rests there: k = 6 behind three or four Marines, 8 behind a Tank (`h_pack3`, `h_pack4`, `h_placed_tank`). The inside-click radius does not apply. | `reserveDestinations()` sets `inside` only when no mover stands within its radius + `ARRIVAL.near` of the point. |
+| Carried front pair | Behind a lead on the point, a 2×2 box's front pair settles at 2 radii. The rear pair pushes it in and stops at 3 radii, or at the front pair's multiple when that is larger. The pushed front pair never counts towards q (rear pairs of 16 unit types, both twins). | A squadmate that settled beyond its radius + `ARRIVAL.near` counts only once carried inside that and rested `nearDelay`. A unit pushing one stops at `ARRIVAL.pressFloor` radii while something else is on the point. |
+| Trio first arrival | Three abreast reaching an empty point: the flanks stop first at 2.2–2.5 radii and the middle walks onto the exact point (13 of 16 `h_fa_*3` runs). | With q = 0, a unit flanked on both sides (`ARRIVAL.flank`) does not settle beside them. |
+| Point under a held unit | Marines ordered onto a held Tank walk straight at it and stop on contact, 1.19 out (`h_hold_tank` loops 116 and 123). | Move ends on contact with a Hold or sieged body covering the point, with no avoidance swerve before it. |
 | Contact gap | Settled crowds sit r1 + r2 − 1/16 apart. | `COLLISION.gap` = −1/16 game unit. |
 | Idle allies | Idle units part around a moving squad and are carried along. A unit pushed more than 8 radii walks straight back to the exact point it was pushed from. A smaller push is checked every 32 loops and walked back past 4/3 radius. | `pushHome` memory and `pushReturn()`. Units of the moving command are never pushed home. Hold Position units are never pushed. |
 | Blocked ranged attackers | An attack-moving unit behind a firing ally slides to the right along it until it has a firing line. The army opens into an arc. | `slide()` with `ENGAGE.contact` and `ENGAGE.makeWay`. Predicted avoidance is off for units that are fighting. |
@@ -91,3 +95,26 @@ Error per fixture (game units). The noise floor is native against native with ev
 | c_switch_idle / _amove / _patrol | 0.975 / 0.726 / 0.405 | 0.459 / 0.508 / 0.394 | 0.059 / 0.014 / 0.197 |
 
 The remaining `c_` residuals come from the map objects listed above and from per-shot random cooldowns, which the browser cannot reproduce. The 23 core fixtures total 8.23 against 7.81 before. The difference is all in the chaotic `amove_vs_idle_ball`, whose own floor is 1.57. Averaged over four weapon seeds, the core total is 8.13 after and 8.05 before. On the three non-default seeds it is 8.10 after and 8.12 before.
+
+## Stop-radius follow-up (`h_` probes)
+
+These are the four arrival rules added to the Movement table above. Errors are averaged over weapon seeds 1474, 1 and 2. The pass bar is max(1.25 × native jitter floor, 0.15).
+
+| Fixture | Target | Before | After |
+| --- | --- | --- | --- |
+| h_pack3 / h_pack4 / h_pack7 | 0.413 / 0.290 / 0.541 | 0.493 / 0.553 / 0.622 | 0.079 / 0.184 / 0.461 |
+| h_placed_tank | 0.289 | 0.506 | 0.089 |
+| h_hold_tank | 0.150 | 0.232 | 0.012 |
+| h_same_marauder / h_marine_marauder4 | 0.150 / 0.150 | 0.247 / 0.228 | 0.066 / 0.066 |
+| h_hellion_hellion4 / h_tank_siegetank4 | 0.150 / 0.200 | 0.379 / 0.349 | 0.110 / 0.135 |
+| h_fa_marine3_8_5 / _8_10 / h_fa_hellion3_14_10 | 0.150 / 0.150 / 0.260 | 0.178 / 0.165 / 0.335 | 0.110 / 0.101 / 0.111 |
+| h_pack2 | 0.150 | 0.330 | 0.223 |
+| h_marine_hellion4 | 0.185 | 0.232 | 0.361 |
+
+The floor report goes from 82 to 94 of 107. No passing fixture became a miss, and the 23 core fixtures still total 7.36.
+
+Three misses remain:
+
+- `h_pack2`: one of the two Marines on the point keeps walking and pushes the other off. Which one walks does not follow tag order or geometry in the twins.
+- `h_marine_hellion4`: in both twins one rear Hellion stops early, 2.7 to 3.0 out, before the front pair settles. No radius rule explains it.
+- `h_same_scv`: the SCVs ignore the stop radius. They brake towards the exact point, push the lead SCV 1.2 away and finish when they come to rest. Modelling that needs a worker-specific completion rule, and only one fixture pair shows it.
