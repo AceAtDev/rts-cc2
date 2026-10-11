@@ -5,7 +5,8 @@ import {PROFILES,SCALE} from '../dist/unit-profiles.js';
 const DT=1/22.4;
 const unit=(id,team,x,type='marine')=>({...PROFILES[type],id,type,team,x,y:500,hp:1000,maxhp:1000,
   damage:PROFILES[type].weapon.damage,kills:0,cooldown:0,angle:0,turretAngle:0,
-  vision:9*SCALE,vx:0,vy:0,hold:false,order:null,orders:[]});
+  vision:9*SCALE,vx:0,vy:0,hold:false,order:null,orders:[],scanPhase:7});
+// scanPhase 7 puts the first simulated loop on the unit's native 8-loop scan slot.
 const make=(units)=>{
   let now=0;const moves=[];
   const combat=createCombat({entities:()=>units,visible:(e,t)=>!t.hidden,clock:()=>now,research:()=>[{},{}],shots:()=>[],
@@ -21,16 +22,19 @@ let checks=0;const check=(name,fn)=>{fn();checks++;console.log('PASS',name);};
 for(const team of [0,1])check(`Team ${team} idle acquisition remembers its origin and returns after target death`,()=>{
   const a=unit(1,team,500),t=unit(2,1-team,660),h=make([a,t]);h.step(a);
   assert.deepEqual(a.combatAnchor,{x:500,y:500});a.x=760;t.x=900;h.step(a);t.hp=0;
-  h.step(a);assert(a.combatReturning);assert(a.x<760);h.step(a,100);
+  // Native patrol_engage/c_leash_chase: stand through the 12-loop backswing,
+  // then walk home on the loop after it.
+  h.step(a,12);assert.equal(a.x,760);h.step(a);assert(a.combatReturning);assert(a.x<760);h.step(a,100);
   assert(Math.abs(a.x-500)<=1);assert.equal(a.combatAnchor,null);assert.equal(a.combatReturning,false);assert.equal(a.order,null);
 });
 check('An idle acquired target remains pursued beyond personal vision when actually visible',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),h=make([a,t]);h.step(a);t.x=820;
   h.step(a);assert.equal(a.combatTarget,t);assert(a.x>500);assert.equal(a.combatReturning,undefined);
 });
-check('Idle distant pursuit switches to return after the explicit custom 21-unit displacement limit',()=>{
+check('Idle distant pursuit switches to return beyond the native 21.75 leash (c_leash_lanes)',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),h=make([a,t]);h.step(a);
-  a.x=500+21.01*SCALE;t.x=a.x+10*SCALE;const at=a.x;h.step(a);
+  a.x=500+21.66*SCALE;t.x=a.x+10*SCALE;h.step(a);assert.equal(a.combatTarget,t);
+  a.x=500+21.78*SCALE;t.x=a.x+10*SCALE;const at=a.x;h.step(a);
   assert.equal(a.combatTarget,null);assert(a.combatReturning);assert(a.x<at);assert.equal(h.moves.at(-1).t,a.combatAnchor);
 });
 for(const kind of ['attackMove','patrol'])check(`${kind} pursuit is retained beyond personal vision and idle displacement cutoff`,()=>{
@@ -59,12 +63,11 @@ check('Custom return policy declines a fresh enemy outside weapon range',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),units=[a,t],h=make(units);h.step(a);a.x=850;t.hp=0;
   const nearby=unit(3,1,1020);units.push(nearby);h.step(a);const x=a.x;h.step(a);assert.equal(a.combatTarget,null);assert(a.x<x);
 });
-check('Custom return policy permits in-range defense, then resumes the same anchor',()=>{
+check('The walk home is a plain Move that ignores even an in-range enemy (native c_leash_chase2)',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),units=[a,t],h=make(units);h.step(a);a.x=850;t.hp=0;h.step(a);
   const threat=unit(3,1,a.x+100);units.push(threat);
-  // Native search waits for a nearly ready weapon on a three-loop schedule.
-  for(let i=0;i<20&&a.combatTarget!==threat;i++){threat.x=a.x+100;h.step(a);}assert.equal(a.combatTarget,threat);
-  assert.deepEqual(a.combatAnchor,{x:500,y:500});const x=a.x;threat.hp=0;h.step(a);assert(a.x<x);
+  for(let i=0;i<20;i++){threat.x=a.x+100;const x=a.x;h.step(a);assert.equal(a.combatTarget,null);assert(a.x<x);}
+  assert.deepEqual(a.combatAnchor,{x:500,y:500});
 });
 check('Fog loss returns idle units without reading the hidden target new location',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),h=make([a,t]);h.step(a);a.x=800;t.hidden=true;t.x=1800;h.step(a);
@@ -72,7 +75,7 @@ check('Fog loss returns idle units without reading the hidden target new locatio
 });
 check('Stop establishes a fresh origin rather than returning to the canceled mission',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),h=make([a,t]);h.step(a);a.x=800;h.combat.cancel(a);a.order=null;t.x=960;
-  h.step(a);assert.deepEqual(a.combatAnchor,{x:800,y:500});
+  h.step(a,8);assert.deepEqual(a.combatAnchor,{x:800,y:500});
 });
 check('Reset clears return missions and origins',()=>{
   const a=unit(1,0,500),t=unit(2,1,660),h=make([a,t]);h.step(a);a.x=800;t.hp=0;h.step(a);

@@ -177,7 +177,7 @@ class NativeLab:
         frames = []
         for rel in range(loops+1):
             units = self.units
-            frames.append({'loop': rel, 'units': {str(t): {k: units[t][k] for k in ('x', 'y', 'facing', 'hp', 'cd', 'target', 'orders', 'r')}
+            frames.append({'loop': rel, 'game_loop': self.loop, 'units': {str(t): {k: units[t][k] for k in ('x', 'y', 'facing', 'hp', 'cd', 'target', 'orders', 'r')}
                            for t in tags if t in units}, 'errors': self.errors})
             if rel == loops:
                 break

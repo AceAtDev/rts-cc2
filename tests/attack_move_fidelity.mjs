@@ -4,7 +4,8 @@ import {PROFILES,SCALE} from '../dist/unit-profiles.js';
 const DT=1/22.4;
 const unit=(id,team,x,type='marine')=>({...PROFILES[type],id,type,team,x:x*SCALE,y:42*SCALE,
   hp:1000,maxhp:1000,damage:team?0:PROFILES[type].weapon.damage,kills:0,cooldown:0,
-  angle:0,turretAngle:0,vx:0,vy:0,vision:9*SCALE,order:null,orders:[]});
+  angle:0,turretAngle:0,vx:0,vy:0,vision:9*SCALE,order:null,orders:[],scanPhase:7});
+// scanPhase 7 puts the first simulated loop on the unit's native 8-loop scan slot.
 function make(units,callback) {
   let time=0;const moves=[],shots=[],damage=[];
   const combat=createCombat({entities:()=>units,visible:(e,t)=>!t.hidden,clock:()=>time,
@@ -21,11 +22,17 @@ for(const kind of ['attackMove','patrol']) {
     assert.equal(source.combatTarget,near);assert.equal(source.order,order);
     assert.equal(near.hp,994);assert.equal(retreater.hp,1000);assert.equal(h.moves.length,0);
   });
-  check(`${kind} retains a far visible retreater when no in-range alternative exists`,()=>{
-    const source=unit(1,0,40),retreater=unit(2,1,60),other=unit(3,1,46);
+  check(`${kind} retains a far visible retreater when no alternative is inside scan range`,()=>{
+    const source=unit(1,0,40),retreater=unit(2,1,60),other=unit(3,1,46.3);
     source.order={kind,x:60*SCALE,y:42*SCALE};source.combatTarget=retreater;
     const h=make([source,retreater,other]);h.step();assert.equal(source.combatTarget,retreater);
     assert.deepEqual(h.moves,[retreater]);
+  });
+  check(`${kind} switches to a closer opponent inside scan but outside weapon range (native c_switch_*)`,()=>{
+    const source=unit(1,0,40),retreater=unit(2,1,60),other=unit(3,1,46);
+    source.order={kind,x:60*SCALE,y:42*SCALE};source.combatTarget=retreater;
+    const h=make([source,retreater,other]);h.step();assert.equal(source.combatTarget,other);
+    assert.deepEqual(h.moves,[other]);
   });
   check(`${kind} keeps an in-range incumbent despite a closer equal-ranked opponent`,()=>{
     const source=unit(1,0,40),incumbent=unit(2,1,45),near=unit(3,1,43);
@@ -33,12 +40,15 @@ for(const kind of ['attackMove','patrol']) {
     const h=make([source,incumbent,near]);h.step(2);assert.equal(source.combatTarget,incumbent);assert.equal(incumbent.hp,994);
   });
 }
-check('Manual focus fire and idle pursuit retain their out-of-range equal-ranked target',()=>{
-  for(const kind of ['attack',null]) {
-    const source=unit(1,0,40),retreater=unit(2,1,47),near=unit(3,1,43);
-    source.order=kind?{kind,target:retreater}:null;source.combatTarget=retreater;
-    const h=make([source,retreater,near]);h.step();assert.equal(source.combatTarget,retreater);assert.deepEqual(h.moves,[retreater]);
-  }
+check('Manual focus fire retains its out-of-range equal-ranked target',()=>{
+  const source=unit(1,0,40),retreater=unit(2,1,47),near=unit(3,1,43);
+  source.order={kind:'attack',target:retreater};source.combatTarget=retreater;
+  const h=make([source,retreater,near]);h.step();assert.equal(source.combatTarget,retreater);assert.deepEqual(h.moves,[retreater]);
+});
+check('Idle pursuit switches to a closer opponent on its scan slot (native c_leash_chase)',()=>{
+  const source=unit(1,0,40),retreater=unit(2,1,47),near=unit(3,1,43);
+  source.combatTarget=retreater;source.combatAnchor={x:source.x,y:source.y};
+  const h=make([source,retreater,near]);h.step();assert.equal(source.combatTarget,near);assert.deepEqual(h.moves,[]);
 });
 check('A closer lower-ranked target does not displace a retreating higher-ranked target',()=>{
   const source=unit(1,0,40),retreater=unit(2,1,47),near=unit(3,1,43);retreater.attackTargetPriority=30;
@@ -74,7 +84,8 @@ check('Fatal damage callback clamps HP loss and observes applied death and kill 
 check('Delayed missile callback occurs at impact with bonus damage, not at launch',()=>{
   const source=unit(1,0,40,'marauder'),target=unit(2,1,44,'marauder');target.armor=1;
   source.order={kind:'attack',target};const h=make([source,target]);h.step();assert.equal(h.damage.length,0);
-  h.step(4);assert.equal(h.damage.length,1);assert.equal(h.damage[0].amount,19);assert.equal(target.hp,981);
+  // Native c_first_Marauder: impact ceil(d/1.25)+1 loops after launch.
+  h.step(4);assert.equal(h.damage.length,0);h.step();assert.equal(h.damage.length,1);assert.equal(h.damage[0].amount,19);assert.equal(target.hp,981);
 });
 check('Splash reports each actual allied/enemy hit, including fatal allied damage',()=>{
   const source=unit(1,0,40,'tank'),target=unit(2,1,45),ally=unit(3,0,45.2);ally.damage=0;ally.hp=3;
