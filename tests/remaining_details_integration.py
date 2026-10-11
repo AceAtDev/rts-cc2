@@ -48,7 +48,7 @@ with sync_playwright() as p:
  assert all(r['pass'] for r in results),[r for r in results if not r['pass']]
  # Real keyboard Shift Load/Unload while grounded does not interrupt production.
  page.evaluate("()=>{__game.reset();__game.start();__game.aiEnabled=false;__game.running=false;__game.entities.splice(0);__game.minerals.splice(0);const c=__game.spawn('core',0,700,1100);__game.spawn('core',1,1900,300);__game.spawn('worker',0,850,1100);__game.money=5000;__game.selected=[c];__game.running=true;__game.train('worker');}")
- page.keyboard.press('Shift+o');page.evaluate('__game.running=false');assert page.evaluate('__game.entities.find(e=>e.type==="worker"&&!e.building).order?.kind==="board"')
+ page.keyboard.press('Shift+o');page.evaluate('__game.running=false');assert page.evaluate('(w=>w.order?.kind==="board"||!!w.loadedIn)(__game.entities.find(e=>e.type==="worker"&&!e.building))')  # real-time frames may finish boarding under load
  page.evaluate('for(let i=0;i<100;i++)__game.update(1/22.4)');page.evaluate('__game.running=true');page.keyboard.press('Shift+d');page.evaluate('__game.running=false');assert page.evaluate('__game.selected[0].loaded.length===0&&__game.selected[0].queue.length===1')
  assert not errors,errors
  page.evaluate('__game.camera.x=700;__game.camera.y=1100');page.wait_for_timeout(50);page.screenshot(path='/workspace/sc2-control-lab/artifacts/remaining-details.png')
