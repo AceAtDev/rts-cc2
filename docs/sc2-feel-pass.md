@@ -52,3 +52,27 @@ The contact-arrival bound is twice the packed blob radius plus two unit radii.
 - range-arc spots
 
 The compact-formation and autonomous-controller checks now assert the convergent contract instead of the removed slot fallback. These are behavior checks against researched rules; they do not establish native trajectory equivalence.
+
+## Unit AI pass (native SC2 4.10 traces)
+
+The `c_` fixtures in `tests/native_compare/feel_fixtures.py` cover every implemented unit type. Native traces now record `game_loop`. The browser replay runs with fog revealed, as the native lab does. It copies each unit's scan slot from its native tag.
+
+| Native finding | Evidence | Browser rule |
+| --- | --- | --- |
+| Idle, Attack-move and chase scans run once every 8 loops, when `game_loop % 8 == (tag >> 18) % 8` | 48/48 lanes in `c_scan_idle`, `c_scan_idle_hellion`, `c_scan_amove` | `scanDue`, with a per-unit `scanPhase` |
+| After losing a target, a unit stands until its weapon backswing ends: Marine 12 loops, Siege Tank 8. Cooldown does not gate this. Then it searches once. | `acq_delay_*` (new target exactly 12 loops after the last shot), `patrol_engage`, `c_siege_min` | Replaces the cooldown gate and the 3-loop schedule |
+| An idle chaser gives up past AcquireLeashRadius plus its own diameter: 21.75 for Marine/Reaper, 22.25 for Hellion. The walk home is a plain Move with no scanning and no retaliation. | `c_leash_lanes`, `c_leash_lanes_hellion`, `c_leash_chase2` | `leashRadius+2r`; the return no longer re-acquires |
+| A chaser whose target is beyond scan range switches to a closer opponent inside scan range | `c_switch_amove`, `c_switch_patrol`, `c_switch_idle`, `c_leash_chase` | `pursuing`/`lost` rule |
+| The attack starts in the loop that brings the unit into range. Point-0 weapons fire in that loop. | `c_stop_hit_*`, `c_leash_chase3` | `arrived` path |
+| A damaged unit answers on the loop after the damage | `c_stop_hit_*` | `settled` |
+| Marauder missiles land `ceil(d/1.25)+1` loops after launch | `c_first_Marauder`, `c_stop_hit_*` | one-loop missile wait |
+| The second Reaper hit lands one loop after the first | `c_first_Reaper` | `burstInterval` of 1 loop |
+| Siege splash bands are measured to the unit's edge, so the Siege Tank hits allies too | `c_siege_splash` | `dist-u.r` |
+| Siege Tank: 90mm Arc 360 fires without turning. The sieged turret starts at body+180 and turns at 360°/s. | `c_first_SiegeTank`, `c_siege_splash` | `arc`, `turretRate`, siege `turretAngle` |
+| An SCV hit while it has an order (Move, mining) never flees for that hit later | `c_leash_chase`, `c_amove_retreat` | damage consumed while busy |
+
+Open gaps:
+
+- A Marauder chasing a faster Hellion gives up 13.8–16 from its anchor, always on a scan slot. Neither distance nor time explains it (`c_leash_lanes_marauder`).
+- Chase paths and turn speed differences belong to movement code.
+- Weapon random delays cannot match native draws.
