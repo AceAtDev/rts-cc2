@@ -268,6 +268,7 @@ FIXTURES['b_arr_grid16'] = dict(loops=170, units=[('m', 'Marine', 1, grid(28, 40
 
 # Chaos floor: the same fixtures with every requested position nudged by 0.01.
 import copy as _copy
+import math
 for _name in ['crossing_groups', 'amove_ball_vs_line', 'amove_vs_idle_ball', 'loose32_click_inside', 'idle_push',
               'spread48_move', 'compact6_inside', 'mixed_move', 'march24_far']:
     _spec = _copy.deepcopy(FIXTURES[_name])
@@ -498,6 +499,60 @@ FIXTURES['g_carry_row'] = dict(loops=150, units=[('m', 'Marine', 1, line(36, 41.
                                                  ('i', 'Marauder', 1, [[40, 42.3]])],
                                commands=[(0, 'move', 'm', (50, 42))])
 for _name in [k for k in FIXTURES if k.startswith('g_')]:
+    _spec = _copy.deepcopy(FIXTURES[_name])
+    _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
+    FIXTURES['jit_'+_name] = _spec
+
+# --- stop radius probes (h_): what sets the radius later squadmates stop at ---
+# Native-only measurement probes (most lead types are not modelled in the
+# browser). One lead of each radius walks onto the point ahead of a 2x2 Marine
+# box; k Marines start packed on the point; other mover types follow a Tank.
+_box = lambda kind='Marine', s=1.0: [('m', kind, 1, grid(32, 42-s/2, 2, 2, s))]
+for _kind in ['Zealot', 'Stalker', 'Immortal', 'Queen', 'Ultralisk', 'Thor', 'Archon', 'Roach', 'Cyclone',
+              'Colossus', 'Adept', 'Hydralisk', 'Ravager', 'Hellbat', 'Probe', 'Ghost', 'Marine', 'SiegeTank']:
+    FIXTURES[f'h_lead_{_kind.lower()}'] = dict(loops=170, units=[('l', _kind, 1, [[44, 42]])]+_box(),
+                                                commands=[(0, 'move', ['l', 'm'], (50, 42))])
+_packs = {2: [[50, 41.656], [50, 42.344]], 3: [[50.2, 41.656], [50.2, 42.344], [49.6, 42]],
+          4: [[49.656, 41.656], [49.656, 42.344], [50.344, 41.656], [50.344, 42.344]],
+          7: [[50, 42]]+[[50+.6875*math.cos(a*math.pi/3), 42+.6875*math.sin(a*math.pi/3)] for a in range(6)]}
+for _k, _pts in _packs.items():
+    FIXTURES[f'h_pack{_k}'] = dict(loops=170, units=[('l', 'Marine', 1, _pts)]+_box(),
+                                   commands=[(0, 'move', ['l', 'm'], (50, 42))])
+for _kind, _s in [('Zealot', 1.2), ('Hellion', 1.4), ('Roach', 1.4), ('SiegeTank', 1.9), ('Zergling', 1.0)]:
+    FIXTURES[f'h_tank_{_kind.lower()}4'] = dict(loops=200, units=[('l', 'SiegeTank', 1, [[44, 42]])]+_box(_kind, _s),
+                                                 commands=[(0, 'move', ['l', 'm'], (50, 42))])
+# Mover size: boxes of other types behind leads of several radii.
+for _lead in ['Marine', 'Hellion', 'Immortal', 'SiegeTank', 'Ultralisk']:
+    for _kind, _s in [('Zealot', 1.2), ('Hellion', 1.4), ('Marauder', 1.3), ('Immortal', 1.7), ('Ultralisk', 2.2)]:
+        if _lead == 'SiegeTank' and _kind in ('Zealot', 'Hellion'):
+            continue
+        FIXTURES[f'h_{_lead.lower()}_{_kind.lower()}4'] = dict(
+            loops=200, units=[('l', _lead, 1, [[44, 42]])]+_box(_kind, _s), commands=[(0, 'move', ['l', 'm'], (50, 42))])
+# Same-type lead and box (does the k-th multiple of the mover radius depend on scale?).
+for _kind, _s in [('Zealot', 1.2), ('Marauder', 1.3), ('Zergling', 1.0), ('SCV', 1.0), ('Roach', 1.3), ('Stalker', 1.4),
+                  ('Hellbat', 1.4), ('Cyclone', 1.7), ('Archon', 2.2), ('Ghost', 1.0), ('Adept', 1.2)]:
+    FIXTURES[f'h_same_{_kind.lower()}'] = dict(loops=200, units=[('l', _kind, 1, [[44, 42]])]+_box(_kind, _s),
+                                                commands=[(0, 'move', ['l', 'm'], (50, 42))])
+FIXTURES['h_zergling_marine4'] = dict(loops=170, units=[('l', 'Zergling', 1, [[44, 42]])]+_box(),
+                                      commands=[(0, 'move', ['l', 'm'], (50, 42))])
+FIXTURES['h_marine_zergling4'] = dict(loops=170, units=[('l', 'Marine', 1, [[44, 42]])]+_box('Zergling'),
+                                      commands=[(0, 'move', ['l', 'm'], (50, 42))])
+# Do units outside the command count? An idle / held Tank or Marine trio on the point.
+FIXTURES['h_idle_tank'] = dict(loops=170, units=[('l', 'SiegeTank', 1, [[50, 42]])]+_box(), commands=[(0, 'move', 'm', (50, 42))])
+FIXTURES['h_hold_tank'] = dict(loops=170, units=[('l', 'SiegeTank', 1, [[50, 42]], 'hold')]+_box(),
+                               commands=[(0, 'move', 'm', (50, 42))])
+FIXTURES['h_idle_pack3'] = dict(loops=170, units=[('l', 'Marine', 1, _packs[3])]+_box(), commands=[(0, 'move', 'm', (50, 42))])
+FIXTURES['h_placed_tank'] = dict(loops=170, units=[('l', 'SiegeTank', 1, [[50, 42]])]+_box(),
+                                 commands=[(0, 'move', ['l', 'm'], (50, 42))])
+# First arrivals: a few units side by side reach an empty point together (a far
+# straggler keeps the group out of the compact-formation box).
+for _kind, _n, _s in [('Marine', 2, .8), ('Marine', 2, 1.2), ('Marine', 3, .8), ('Hellion', 2, 1.4), ('Hellion', 3, 1.4),
+                      ('Marauder', 2, 1.2), ('Zealot', 2, 1.1)]:
+    for _dx in (0, .05, .1, .15):
+        FIXTURES[f'h_fa_{_kind.lower()}{_n}_{int(_s*10)}_{int(_dx*100)}'] = dict(
+            loops=100, units=[('l', _kind, 1, line(42+_dx, 42-_s*(_n-1)/2, _n, 0, _s)), ('z', 'Marine', 1, [[30, 42]])],
+            commands=[(0, 'move', ['l', 'z'], (50, 42))])
+for _name in [k for k in FIXTURES if k.startswith('h_')]:
     _spec = _copy.deepcopy(FIXTURES[_name])
     _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
     FIXTURES['jit_'+_name] = _spec

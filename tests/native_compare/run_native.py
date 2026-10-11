@@ -1,6 +1,7 @@
 """Capture tests/native_compare/feel_fixtures.py in the native client.
 
-Usage: python3 run_native.py OUTDIR [fixture ...]
+Usage: python3 run_native.py OUTDIR [--seed N] [fixture ...]
+--seed sets the game random seed (default 42); --suffix S appends S to trace names.
 Traces (JSON) are written outside the repository; see native_lab.py.
 """
 import json, sys, time
@@ -11,7 +12,7 @@ from feel_fixtures import FIXTURES
 SETTLE = 1  # loop after spawning/holding before relative loop 0 (state is copied by replay)
 
 
-def run(lab, name, spec, outdir):
+def run(lab, name, spec, outdir, suffix=''):
     lab.clear()
     groups, meta = {}, []
     for group in spec['units']:
@@ -42,19 +43,24 @@ def run(lab, name, spec, outdir):
     frames = lab.record(spec['loops'], tags, {k: (lambda fs=v: [f() for f in fs]) for k, v in schedule.items()})
     trace = {'fixture': name, 'version': lab.ping.game_version, 'data_version': lab.ping.data_version,
              'map': lab.info.map_name, 'units': meta, 'commands': spec['commands'], 'frames': frames}
-    Path(outdir, name+'.json').write_text(json.dumps(trace))
+    Path(outdir, name+suffix+'.json').write_text(json.dumps(trace))
     return trace
 
 
 if __name__ == '__main__':
     outdir = Path(sys.argv[1]); outdir.mkdir(parents=True, exist_ok=True)
-    names = sys.argv[2:] or list(FIXTURES)
-    lab = NativeLab()
+    args, seed, suffix = sys.argv[2:], 42, ''
+    while args and args[0] in ('--seed', '--suffix'):
+        if args[0] == '--seed': seed = int(args[1])
+        else: suffix = args[1]
+        args = args[2:]
+    names = args or list(FIXTURES)
+    lab = NativeLab(seed=seed)
     try:
         print('native', lab.ping.game_version, 'playable', str(lab.info.start_raw.playable_area).replace('\n', ' '), flush=True)
         for name in names:
             started = time.time()
-            trace = run(lab, name, FIXTURES[name], outdir)
+            trace = run(lab, name, FIXTURES[name], outdir, suffix)
             last = trace['frames'][-1]['units']
             print(f'{name}: {len(trace["units"])} units, {len(trace["frames"])} frames, '
                   f'alive {len(last)}, {time.time()-started:.1f}s', flush=True)

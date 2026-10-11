@@ -34,6 +34,11 @@ if __name__ == '__main__':
     a = p.parse_args()
     names = sorted(f.stem[4:] for f in Path(a.native).glob('jit_*.json') if (Path(a.native)/f'{f.stem[4:]}.json').exists())
     names = [n for n in names if not n.startswith('jit_')]
+    # Native-only probes (unit types the browser does not model) cannot be scored.
+    from replay_browser import SUPPORTED
+    replayable = lambda n: all(m['type'] in SUPPORTED for m in load(Path(a.native)/f'{n}.json')['units'])
+    skipped = [n for n in names if not replayable(n)]
+    names = [n for n in names if n not in skipped]
     seeds = [int(s) for s in a.seeds.split(',')]
     errs = {n: 0.0 for n in names}
     for seed in seeds:
@@ -46,4 +51,4 @@ if __name__ == '__main__':
         fl = floor(a.native, n); target = max(1.25*fl, .15); ok = errs[n] <= target
         passed += ok
         print(f"{n:30} {fl:7.3f} {target:7.3f} {errs[n]:8.3f}  {'PASS' if ok else 'MISS'}")
-    print(f'{passed}/{len(names)} fixtures within SC2 noise floor')
+    print(f'{passed}/{len(names)} fixtures within SC2 noise floor ({len(skipped)} native-only probes skipped)')

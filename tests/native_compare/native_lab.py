@@ -13,7 +13,10 @@ from s2clientprotocol import sc2api_pb2 as pb, raw_pb2 as raw, debug_pb2 as dbg,
 SC2 = Path(os.environ.get('SC2PATH', '/home/user/native-sc2/StarCraftII'))
 UNIT = {'SCV': 45, 'Marine': 48, 'Marauder': 51, 'Reaper': 49, 'Hellion': 53, 'SiegeTank': 33,
         'SiegeTankSieged': 32, 'Thor': 52, 'CommandCenter': 18, 'SupplyDepot': 19, 'SupplyDepotLowered': 47,
-        'Zergling': 105, 'Roach': 110, 'Stalker': 74, 'Zealot': 73, 'Ultralisk': 109, 'MineralField': 341}
+        'Zergling': 105, 'Roach': 110, 'Stalker': 74, 'Zealot': 73, 'Ultralisk': 109, 'MineralField': 341,
+        'Immortal': 83, 'Archon': 141, 'Colossus': 4, 'Queen': 126, 'Cyclone': 692, 'Hydralisk': 107,
+        'Adept': 311, 'Probe': 84, 'Ravager': 688, 'Hellbat': 484, 'Ghost': 50}
+KEPT = ('CommandCenter', 'MineralField')  # survive clear(); every other listed type is removed
 ABILITY = {'smart': 1, 'stop': 4, 'move': 16, 'patrol': 17, 'hold': 18, 'attack': 23, 'siege': 388, 'unsiege': 390}
 
 
@@ -132,10 +135,7 @@ class NativeLab:
         """Remove every mobile unit (and optionally structures other than town halls)."""
         units = self.observe()
         doomed = [t for t, u in units.items() if u['owner'] in (1, 2) and (u['type'] not in (UNIT['CommandCenter'],)
-                  if not keep_structures else u['type'] in (UNIT['SCV'], UNIT['Marine'], UNIT['Marauder'], UNIT['Reaper'],
-                  UNIT['Hellion'], UNIT['SiegeTank'], UNIT['SiegeTankSieged'], UNIT['Thor'], UNIT['Zergling'], UNIT['Roach'],
-                  UNIT['Stalker'], UNIT['Zealot'], UNIT['Ultralisk'],
-                  UNIT['SupplyDepot'], UNIT['SupplyDepotLowered']))]
+                  if not keep_structures else u['type'] in [v for k, v in UNIT.items() if k not in KEPT])]
         if doomed:
             self.debug([dbg.DebugCommand(kill_unit=dbg.DebugKillUnit(tag=doomed))])
         self.step(2)
