@@ -265,3 +265,11 @@ FIXTURES['b_one_vs_idle_group'] = dict(loops=150, units=[('a', 'Marine', 1, [[36
                                        commands=[(0, 'move', 'a', (50, 42.2))])
 FIXTURES['b_arr_row8'] = dict(loops=150, units=[('m', 'Marine', 1, line(30, 38.5, 8, 0, 1.0))], commands=[(0, 'move', 'm', (44, 42))])
 FIXTURES['b_arr_grid16'] = dict(loops=170, units=[('m', 'Marine', 1, grid(28, 40, 4, 4, 1.2))], commands=[(0, 'move', 'm', (46, 42))])
+
+# Chaos floor: the same fixtures with every requested position nudged by 0.01.
+import copy as _copy
+for _name in ['crossing_groups', 'amove_ball_vs_line', 'amove_vs_idle_ball', 'loose32_click_inside', 'idle_push',
+              'spread48_move', 'compact6_inside', 'mixed_move', 'march24_far']:
+    _spec = _copy.deepcopy(FIXTURES[_name])
+    _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
+    FIXTURES['jit_'+_name] = _spec
