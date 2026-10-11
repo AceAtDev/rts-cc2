@@ -273,3 +273,8 @@ for _name in ['crossing_groups', 'amove_ball_vs_line', 'amove_vs_idle_ball', 'lo
     _spec = _copy.deepcopy(FIXTURES[_name])
     _spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
     FIXTURES['jit_'+_name] = _spec
+
+# Agent D: noise floor for the row arrival probe (same 0.01 nudge as jit_).
+_spec = _copy.deepcopy(FIXTURES['b_arr_row8'])
+_spec['units'] = [(g[0], g[1], g[2], [[p[0]+.01, p[1]+.01] for p in g[3]]) + tuple(g[4:]) for g in _spec['units']]
+FIXTURES['d_jit_b_arr_row8'] = _spec
