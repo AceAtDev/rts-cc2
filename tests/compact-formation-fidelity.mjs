@@ -50,11 +50,11 @@ check('Dense compact layouts preserve offsets without an arbitrary unit-count cu
     reserveDestinations(movers,goal,open);assert(movers.every(m=>m.o.formation==='preserved'));
   }
 });
-check('Wide and spread layouts retain the existing packed-arrival fallback',()=>{
+check('Wide and spread layouts converge on the shared point with contact arrival',()=>{
   for(const movers of [grid(8,6,1),grid(6,4,1.2),[mover(300,600),mover(900,600)]]){
     reserveDestinations(movers,goal,open);
     for(const m of movers){assert.equal(m.o.formation,'packed');assert.equal(m.o.x,goal.x);assert.equal(m.o.y,goal.y);}
-    const slots=new Set(movers.map(m=>`${m.o.arrival.x},${m.o.arrival.y}`));assert.equal(slots.size,movers.length);
+    assert(movers.every(m=>m.o.arrival===undefined&&m.o.groupSize===movers.length&&m.o.groupRadius>0));
   }
 });
 check('Obstructed translated slots safely fall back instead of distorting preserved offsets',()=>{
@@ -64,9 +64,7 @@ check('Obstructed translated slots safely fall back instead of distorting preser
 });
 check('Overlapping footprints fall back rather than making impossible per-unit goals',()=>{
   const movers=[mover(300,600),mover(301,600)];reserveDestinations(movers,goal,open);
-  assert(movers.every(m=>m.o.formation==='packed'));
-  assert(Math.hypot(movers[0].o.arrival.x-movers[1].o.arrival.x,
-    movers[0].o.arrival.y-movers[1].o.arrival.y)>21);
+  assert(movers.every(m=>m.o.formation==='packed'&&m.o.x===goal.x&&m.o.y===goal.y));
 });
 check('Offset goals preserve the shape from the first movement update',()=>{
   const movers=grid(6,4,1);reserveDestinations(movers,goal,open);
