@@ -233,6 +233,9 @@ const DRILLS={
  hellion:{title:'Flame-line positioning',hint:'Line up enemy Marines behind your target. The flame hits units along the line; moving before the flame fires cancels the attack.'},
  tank:{title:'Siege positioning',hint:'E deploys; D returns to Tank Mode. Deployment takes time. Close targets sit inside the minimum range. Your infantry can take friendly splash damage.'},
  reaper:{title:'Reaper skirmish',hint:'Each attack fires two pistol hits. Move away to disengage; regeneration starts after you have avoided damage for a while.'},
+ clump:{title:'Clumping and the magic box',hint:'Right-click inside the big group to pull it into one ball. Right-click far away with the small squad: it keeps its shape. The big group is too wide for that and converges on the click.'},
+ traffic:{title:'Pushing and blocking',hint:'Move the squad through the idle column: idle allies get shoved aside and walk back to their spots. Hold-position Marines (H) never move, so the squad walks around them.'},
+ concave:{title:'Attack-move concave',hint:'A-click past the enemy ball. Units out of range keep walking and slide along the firing line, so the army opens into an arc. Compare with a plain right-click, which ignores the enemy.'},
  marauder:{title:'Marauder projectiles',hint:'Compare hits against light Hellions and armored Marauders. Grenades travel before dealing damage. Move after launch to preserve your cooldown.'},
 };
 function startDrill(key='movement'){
@@ -259,6 +262,16 @@ function startDrill(key='movement'){
  }else if(key==='reaper'){
   for(let i=0;i<3;i++)add('reaper',700,1000+i*30);
   for(let i=0;i<6;i++)foe('marine',960+i%3*25,1000+Math.floor(i/3)*60);
+ }else if(key==='clump'){
+  for(let i=0;i<30;i++)add('marine',700+i%6*40,900+Math.floor(i/6)*40);
+  for(let i=0;i<6;i++)add('marine',980+i%3*24,1120+Math.floor(i/3)*24);
+ }else if(key==='traffic'){
+  for(let i=0;i<8;i++)add('marine',690+i%2*24,960+Math.floor(i/2)*24);
+  for(let i=0;i<5;i++){const u=spawn('marine',0,880,930+i*24);stop(u);}
+  for(let i=0;i<6;i++){const u=spawn('marine',0,880+i%2*24,1080+Math.floor(i/2)*24);stop(u,true);}
+ }else if(key==='concave'){
+  for(let i=0;i<24;i++)add('marine',680+i%6*22,960+Math.floor(i/6)*22);
+  for(let i=0;i<16;i++){const u=spawn('marine',1,1000+i%4*22,1100+Math.floor(i/4)*22);stop(u);}
  }else{
   for(let i=0;i<4;i++)add('marauder',710,1000+i*34);
   for(let i=0;i<3;i++){foe('marauder',980+i*36,1000);foe('hellion',980+i*40,1110);}
