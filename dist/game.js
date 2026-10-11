@@ -87,7 +87,7 @@ const clear=nav.clear,openPoint=nav.open,reachable=nav.project,path=nav.path;
 const placer=createPlacement({defs:TYPES,entities:()=>entities,minerals:()=>minerals,geysers:()=>geysers,rocks,world:WORLD,visible:fogAt});
 const enemyPlacer=createPlacement({defs:TYPES,entities:()=>entities,minerals:()=>minerals,geysers:()=>geysers,rocks,world:WORLD,visible:(x,y)=>enemyVisible[clamp(Math.floor(y/TILE),0,ROWS-1)*COLS+clamp(Math.floor(x/TILE),0,COLS-1)]===1});
 const placementPreview=(x,y)=>placement?placer.preview(placement.type,{x,y},placement.landing):null;
-const motion=createMovement({entities:()=>entities,world:WORLD,clear,openPoint,path,navVersion:()=>navVersion});
+const motion=createMovement({entities:()=>entities,world:WORLD,clear,openPoint,path,navVersion:()=>navVersion,loop:()=>simulationLoop});
 const move=motion.move,collision=motion.collision;
 const construction=createConstruction({move,clear,clock:()=>time});
 const transport=createTransport({entities:()=>entities,issue,complete,stop,move,openPoint,project:reachable,onBoard:w=>{selected=selected.filter(e=>e!==w);if(!selected.some(e=>e.type===activeType))activeType=selected[0]?.type??null;}});

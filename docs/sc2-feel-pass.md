@@ -76,3 +76,24 @@ Open gaps:
 - A Marauder chasing a faster Hellion gives up 13.8–16 from its anchor, always on a scan slot. Neither distance nor time explains it (`c_leash_lanes_marauder`).
 - Chase paths and turn speed differences belong to movement code.
 - Weapon random delays cannot match native draws.
+
+## Crowd arrival pass (native SC2 4.10 traces)
+
+Fitted against `mixed_move`, `spread48_move`, `march24_far`, `compact6_inside`, `loose32_click_inside`, `b_arr_row8` and their 0.01-nudged noise-floor captures (`jit_*`, `d_jit_b_arr_row8`).
+
+| Native finding | Evidence | Browser rule |
+| --- | --- | --- |
+| Group-move settles mostly happen on the unit's 8-loop AI slot (the target-scan slot): the order clears on the observed loop where `(game_loop - (tag >> 18)) % 8 == 1` | 41/48 `spread48_move`, 11/14 `mixed_move`, 28/32 `loose32_click_inside`, 36/48 `jit_spread48_move` | `ARRIVAL.slot`, `scanDue` with `ARRIVAL.shift` (the native unit still moves on its settle loop) |
+| A squadmate that touches nobody walks onto the exact point; before anyone has arrived, a unit touching a squadmate settles within about 0.62-0.79 of the point | Lead Hellion `d=0.000`; `b_arr_row8` first stop 0.615 (go at 0.912); `compact6_inside` four nearest at 0.39-0.59 on one loop | `ARRIVAL.first` |
+| Once squadmates have arrived, units touching a squadmate settle on their slot inside a radius that grows with the arrived area: about 3.4-3.7 game units for far clicks (`mixed_move` Marines 3.41-3.73, late `spread48_move` 3.58-3.70), about `0.5*sqrt(k+1)` for clicks inside the group's box (`loose32` k=4: 1.02-1.04, k=22: 2.36-2.37). Tanks walk closer (no settle at 2.87-3.36). | slot-check envelopes per fixture | `ARRIVAL.first/grow/cap/free/big` |
+| Off-slot settles follow about five loops pressed into an arrived squadmate | `march24_far` (six units after exactly 5 loops of contact) | `ARRIVAL.contactTime` |
+| A walking squadmate carries an arrived one straight ahead at 15/16 speed; the carried unit does not sidestep | `mixed_move` Hellion chain (0.249 vs 0.2656 per loop) | `ARRIVAL.idleShare=1`, `YIELD.settled=0`; fights keep `fightShare` |
+| A unit on a Move order never covers more than its speed in a loop, and a jammed line keeps stepping 0.136-0.141 by sliding sideways | max step 0.1406 in `spread48_move`, `march24_far`, `b_arr_row8` (browser was 0.157) | `COLLISION.stepCap`, `COLLISION.slide` beyond `slideNear` of the point |
+| Squadmates converging on one Move point walk straight into each other | `compact6_inside` diagonal paths | `AVOID.squad=0` (Move only) |
+
+Per-loop mean error (game units) before → after, with the native noise floor: `mixed_move` 0.294 → 0.083 (0.076), `compact6_inside` 0.403 → 0.225 (0.263), `spread48_move` 0.286 → 0.287 (0.217), `idle_push` 0.519 → 0.486 (0.431), `march24_far` 0.139 → 0.132 (0.106), `loose32_click_inside` 0.692 → 0.550 (0.729), `b_arr_row8` 0.318 → 0.398 (0.326).
+
+Open gaps:
+
+- No single radius formula fits every fixture: arrived Hellions (area 1.17) already give Marines a 3.2+ radius in `mixed_move`, while 11 arrived Marines (area 1.55) leave `jit_spread48_move` below 2.46.
+- A jammed native line drifts as a whole and buckles at interior units (`b_arr_row8` units 2 and 4 in both captures); the browser buckles the second unit from each end. The native order of collision resolution is not modeled.
