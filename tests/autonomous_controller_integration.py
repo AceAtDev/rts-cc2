@@ -33,8 +33,10 @@ with sync_playwright() as p:
   const helper=g.spawn('marine',team,800,1100),victim=g.spawn('worker',team,912,1100);g.stop(victim,true);
   if(!attacker)attacker=g.spawn('marine',1-team,1024,1100);
   g.stop(attacker,true);attacker.angle=attacker.pangle=Math.PI;victim.hp=victim.maxhp=10000;g.invalidateNav();
-  const hx=helper.x;tick(1);check('Team '+team+' helper stays idle before damage ('+(attackerFirst?'attacker first':'helper first')+')',helper.x===hx&&!helper.combatTarget);
-  tick(1);check('Team '+team+' idle helper acquires on the damage loop regardless of iteration order',victim.hp<10000&&helper.combatTarget===attacker&&helper.x===hx,{loop:g.simulationLoop,x:helper.x,hp:victim.hp});
+  // The held attacker fires on its own native scan slot; step to the first damage loop.
+  const hx=helper.x;let idleBefore=true;for(let i=0;i<30&&victim.hp===10000;i++){if(helper.x!==hx||helper.combatTarget)idleBefore=false;tick(1);}
+  check('Team '+team+' helper stays idle before damage ('+(attackerFirst?'attacker first':'helper first')+')',idleBefore);
+  check('Team '+team+' idle helper acquires on the damage loop regardless of iteration order',victim.hp<10000&&helper.combatTarget===attacker&&helper.x===hx,{loop:g.simulationLoop,x:helper.x,hp:victim.hp});
   const once=helper.x;g.combat.flushHelp(dt);check('Same-loop help flush cannot advance the helper twice',helper.x===once);
   tick(1);check('Team '+team+' helper begins its approach on the following loop',helper.combatTarget===attacker&&helper.x>hx);
  }
@@ -46,7 +48,7 @@ with sync_playwright() as p:
   check(command+' continues to override nearby ally assistance',!helper.combatTarget&&!helper.windup&&(command==='hold'?helper.x===800:helper.order?.kind==='move'&&helper.x<800));
  }
  reset();g.spawn('core',0,400,1100);g.spawn('core',1,1900,400);
- const idle=g.spawn('worker',0,1200,1100),shooter=g.spawn('marine',1,1340,1100);g.stop(shooter,true);idle.hp=idle.maxhp=10000;g.invalidateNav();tick(2);
+ const idle=g.spawn('worker',0,1200,1100),shooter=g.spawn('marine',1,1340,1100);g.stop(shooter,true);idle.hp=idle.maxhp=10000;g.invalidateNav();for(let i=0;i<30&&idle.hp===10000;i++)tick(1);
  check('Idle SCV records damage origin before deciding to flee',idle.hp<10000&&idle.lastDamageSourcePosition.x===1340);
  shooter.x=500;shooter.y=500;g.update(0);tick(1);
  check('SCV flee uses the recorded origin when the attacker disappears into fog',idle.order?.kind==='flee'&&idle.order.x<1200&&idle.order.y===1100);
