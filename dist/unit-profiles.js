@@ -47,7 +47,10 @@ export function applyProfiles(defs) {
   for (const [type,p] of Object.entries(PROFILES)) Object.assign(defs[type],p,
     {range:p.weapon.range,damage:p.weapon.damage*(p.weapon.burst||1),cool:p.weapon.period,
       vision:{worker:8,marine:9,marauder:10,reaper:9,hellion:10,tank:11}[type]*SCALE});
-  defs.worker.innerRadius=.3125*SCALE;
+  // Catalog InnerRadius (pathing against terrain and structure footprints;
+  // bodies still collide at Radius). Native f_mixed_depot_choke: a Marauder
+  // (Radius .5625, InnerRadius .375) slips past a Supply Depot corner 0.33 off.
+  defs.worker.innerRadius=.3125*SCALE;defs.marauder.innerRadius=.375*SCALE;defs.hellion.innerRadius=.5*SCALE;
   const priorities={marine:78,marauder:76,tank:74,reaper:70,hellion:66,worker:58,core:32,relay:26,barracks:24,factory:22,engineering:18,techlab:2,reactor:1,refinery:1};
   const repairs={worker:16.667,tank:45,hellion:30,core:100,relay:30,barracks:65,factory:60,engineering:35,techlab:25,reactor:50,refinery:30};
   for(const [type,priority] of Object.entries(priorities))defs[type].subgroupPriority=priority;

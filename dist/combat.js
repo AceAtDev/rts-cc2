@@ -234,7 +234,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
         if(rangeOnly&&!reach(t))continue;
         const closer=!best||gap(t)<gap(best);
         if(!best||rank(t)>rank(best)||rank(t)===rank(best)&&
-          (!target&&closer||pursuing&&(lost&&closer||reach(t)&&(!reach(best)||closer))))best=t;
+          (!target&&closer||pursuing&&closer))best=t;
       }
       target=best;
     }

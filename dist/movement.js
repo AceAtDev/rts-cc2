@@ -377,7 +377,9 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       if(e.pointBrake?.order!==e.order||e.pointBrake.x!==p.x||e.pointBrake.y!==p.y)e.pointBrake={order:e.order,x:p.x,y:p.y,active:false};
       const finalLeg=dist(dest,goal)<.001;
       const stoppingDistance=oldSpeed*oldSpeed/(2*deceleration)+(e.pointBrake.active?oldSpeed*dt/2:0);
-      pointBraking=e.pointBrake.active=finalLeg&&remaining<stoppingDistance;
+      // A queued point successor means the unit walks through (game.js).
+      const queued=['move','attackMove','patrol'].includes(e.orders?.[0]?.kind);
+      pointBraking=e.pointBrake.active=finalLeg&&!queued&&remaining<stoppingDistance;
       if(pointBraking){
         const wanted=Math.max(0,oldSpeed-deceleration*dt),desired=length(vx,vy);
         if(desired>wanted){vx*=wanted/desired;vy*=wanted/desired;}
@@ -540,7 +542,7 @@ export const ANCHOR_DETOUR_DELAY=.25,DETOUR_LOOPS=67;
 export function reserveDestinations(movers,point,reachable) {
   if(movers.length<2)return;
   let inside=false;
-  if(movers.every(m=>['move','attackMove'].includes(m.o.kind)&&!m.u.building&&!m.u.flying&&!m.u.sieged&&!m.u.transform)){
+  if(movers.every(m=>['move','attackMove','patrol'].includes(m.o.kind)&&!m.u.building&&!m.u.flying&&!m.u.sieged&&!m.u.transform)){
     const x0=Math.min(...movers.map(m=>m.u.x-m.u.r)),x1=Math.max(...movers.map(m=>m.u.x+m.u.r));
     const y0=Math.min(...movers.map(m=>m.u.y-m.u.r)),y1=Math.max(...movers.map(m=>m.u.y+m.u.r));
     // A click inside the group's own box converges instead of translating:
@@ -561,6 +563,9 @@ export function reserveDestinations(movers,point,reachable) {
           if(Math.hypot(slots[i].x-slots[j].x,slots[i].y-slots[j].y)<movers[i].u.r+movers[j].u.r+3.5){exact=false;break;}
         }
         movers.forEach((m,i)=>{
+          // Native f_patrol_pair_cross: a compact Patrol group keeps the same
+          // mean-centred offsets (order points shifted by each unit's offset).
+          if(m.o.kind==='patrol'){m.o.x=slots[i].x;m.o.y=slots[i].y;return;}
           m.o.x=slots[i].x;m.o.y=slots[i].y;m.o.arrival={...slots[i]};m.o.arrivalRadius=radius;
           m.o.formation='preserved';m.o.groupGoal={...point};m.o.exactFormation=exact;
         });
@@ -573,6 +578,7 @@ export function reserveDestinations(movers,point,reachable) {
   // arrival may happen, so a unit passing an arrived mate far away keeps going.
   const blob=Math.sqrt(movers.reduce((sum,m)=>sum+m.u.r*m.u.r,0)/.8),largest=Math.max(...movers.map(m=>m.u.r));
   for(const m of movers){
+    if(m.o.kind==='patrol')continue;
     delete m.o.arrival;m.o.arrivalRadius=0;m.o.formation='packed';m.o.exactFormation=false;m.o.inside=inside;
     m.o.groupSize=movers.length;m.o.groupRadius=2*blob+2*largest;
   }
