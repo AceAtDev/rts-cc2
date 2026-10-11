@@ -123,13 +123,14 @@ function action(id,append=keys.has('Shift')){groupRecall.cancel();lastGroup=null
  if(id==='unload'){let accepted=false;for(const c of selected.filter(c=>c.type==='core'&&c.team===0&&c.ready&&!c.morph)){if(append&&c.flying&&c.order&&c.loaded?.length)accepted=issue(c,{kind:'unloadAll'},true)||accepted;else{const unloaded=transport.unload(c);if(unloaded&&c.flying)stop(c);accepted=unloaded||accepted;}}updateHUD();return accepted;}
  tone();updateHUD();return true;
 }
+const passThrough=e=>['move','attackMove','patrol'].includes(e.orders?.[0]?.kind);
 function interruptOrder(e,order){const queue=e.orders;e.orders=[];issue(e,order);e.orders=queue}
 function endRepair(e,o){if(o.resumeHold){if(e.orders.length)interruptOrder(e,{kind:'hold'});else complete(e);e.hold=true;return;}if(o.resume)interruptOrder(e,{...o.resume});else complete(e)}
 function cargoOrder(u,target=null){const current=u.order?.kind==='return'?u.order.resume:u.order;return{kind:'return',target,resume:['mine','gas'].includes(current?.kind)?{...current,phase:'out'}:null}}
 function issueGroup(entries,goal,append=false){
  let rejected=false;entries=entries.filter(({u,o})=>{const admission=queueAdmission(u,{append,deferring:u.type==='worker'&&workers.deferring(u)});if(!admission.accepted){if(u.team===0)rejected=true;return false;}return !u.loadedIn&&!u.insideRefinery&&!u.transform&&(!u.sieged||o.kind==='attack');});if(rejected)notify('Cannot queue additional orders');
- const movers=entries.filter(({u,o})=>['move','attackMove'].includes(o.kind)&&!u.transform&&!u.sieged);
- const batch=++commandSerial;for(const {o} of movers)o.batch=batch;
+ const movers=entries.filter(({u,o})=>['move','attackMove','patrol'].includes(o.kind)&&!u.transform&&!u.sieged);
+ const batch=++commandSerial;for(const {o} of movers)if(o.kind!=='patrol')o.batch=batch;
  reserveDestinations(movers,goal,reachable);
  let accepted=0;for(const {u,o} of entries)if(issue(u,o,append))accepted++;return accepted;
 }
@@ -166,6 +167,12 @@ function update(dt){if(ended)return;if(dt>0)simulationLoop++;time+=dt;updateFog(
   if(e.repairAuto&&(!o||o.kind==='patrol')&&e.type==='worker'){const repair=repairAutocastIntent(e,entities,{affordable:b=>{const q=quoteRepair(b,b.maxhp/(b.repairTime||TYPES[b.type].build||30)*(dt||DT));return afford(e.team,q.minerals,q.gas);}});if(repair&&e.orders.length+1+(repair.resume||repair.resumeHold?1:0)<=UNIT_ORDER_LIMIT){const held=e.hold;interruptOrder(e,repair);if(repair.resumeHold)e.hold=held;continue;}}
   if(o?.kind==='land'){if(move(e,o,dt,3)){const p={x:o.x,y:o.y};if(openPoint(p,e.r,e)&&!entities.some(u=>!u.building&&!u.loadedIn&&distance(u,p)<u.r+e.r)){e.flying=false;e.speed=0;stop(e);e.addon=entities.find(a=>['techlab','reactor'].includes(a.type)&&!a.parent&&a.team===e.team&&Math.abs(a.x-addonPosition(e).x)<1&&Math.abs(a.y-addonPosition(e).y)<1);if(e.addon)e.addon.parent=e;invalidateNav()}}continue}
   if(combat.engage(e,dt))continue;o=e.order;
+  // Native 4.10 Shift-queued waypoints (f_shift_waypoints, b_queue_*: Marine,
+  // Marauder, Hellion, SCV; Move, Attack-move, Patrol successors): a point order
+  // with a queued point successor completes once the unit is within one step
+  // of its point, and the unit walks on to the next point in the same loop at
+  // full speed, never landing on or braking for the waypoint.
+  if((o?.kind==='move'||o?.kind==='attackMove')&&!e.flying&&passThrough(e)&&distance(e,o)<e.speed*(e.stim?1.5:1)*(e.slow?.5:1)*dt){complete(e);o=e.order;}
   if(o?.kind==='flee'){if(time>=o.until||move(e,o,dt,0))complete(e)}else if(o?.kind==='move'||o?.kind==='attackMove'){if(move(e,o,dt,e.flying?3:0))complete(e)}else if(o?.kind==='follow'){if(visibleTo(e,o.target)){o.lastSeen={x:o.target.x,y:o.target.y,r:o.target.r};move(e,o.target,dt,e.r+o.target.r+18)}else if(o.lastSeen){if(move(e,o.lastSeen,dt,e.r+o.lastSeen.r+18))complete(e)}else complete(e)}else if(o?.kind==='patrol'){const end=o.out?o:o.origin;if(move(e,end,dt,5)){o.out=!o.out;e.nav=null}}else{e.vx=e.vy=0;const home=dt>0&&motion.pushReturn(e);if(home)issue(e,{kind:'move',...home})}
  }
  selected=selected.filter(e=>!e.loadedIn&&!e.insideRefinery);if(!selected.some(e=>e.type===activeType))activeType=selected[0]?.type??null;combat.flushHelp(dt);motion.begin();for(let pass=0;pass<3;pass++)collision();const dead=entities.filter(e=>e.hp<=0);for(const e of dead){construction.release(e);transport.release(e);if(e.type==='core')transport.destroyed(e);if(e.addon)e.addon.parent=null;if(e.parent?.addon===e)e.parent.addon=null;}

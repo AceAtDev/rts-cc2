@@ -213,19 +213,22 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       const batch=e.order.batch,{count:arrived,area}=arrivals.get(batch)||{count:0,area:0};
       const done=()=>{e.vx=e.vy=0;e.nav=null;e.movementRequest=null;e.pointBrake=null;e.arrivedBatch=batch;e.packedStall=null;
         settle(e,batch);return true;};
-      let mates=0,arrivedMate=false;
+      let mates=0,arrivedMate=false,pair=0;
       for(const b of neighbors(e)){
         if(b===e||b.team!==e.team||b.hp<=0||b.flying)continue;
         const still=b.arrivedBatch===batch&&!b.order,mate=still||b.order?.batch===batch;
         if(!mate||dist(e,b)>e.r+b.r+ARRIVAL.touch)continue;
-        mates++;if(still)arrivedMate=true;
+        mates++;if(still)arrivedMate=true;pair=Math.max(pair,e.r+b.r);
       }
       const G=SCALE,own=ARRIVAL.big*Math.max(0,e.r/G-.375);
       // A click inside the group's box grows the radius with the squad area
       // that has arrived including this unit (loose32: ~0.5*sqrt(k+1)).
       let radius=(e.order.inside?Math.min(ARRIVAL.free*Math.sqrt(area+e.r*e.r)/G,ARRIVAL.cap):
         Math.min(ARRIVAL.first+ARRIVAL.grow*Math.sqrt(area)/G,ARRIVAL.cap))-own;
-      if(!arrived)radius=Math.min(radius,ARRIVAL.first);
+      // Before anyone has arrived the radius is the touching pair's contact
+      // distance (two Marines .75; native f_mixed_depot_choke: a Hellion
+      // touching a Hellion on the point settles 1.15 out, not inside .25).
+      if(!arrived)radius=ARRIVAL.firstPair&&!e.order.inside?ARRIVAL.first*pair/(.75*G):Math.min(radius,ARRIVAL.first);
       const inRadius=d<=radius*G;
       if(!arrived&&mates&&inRadius)return done();
       if(arrived&&mates&&inRadius&&(!ARRIVAL.slot||scanDue(e,(loop?loop():frame>>1)+ARRIVAL.shift)))return done();
@@ -351,6 +354,18 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       if(!pursuit&&!squad&&ahead>0&&ahead<gap+speed*.32&&Math.abs(side)<gap+2&&(!sameDirection&&(anchored||bv>3||b.combatTarget))) {
         const force=speed*.85*(1-Math.abs(side)/(gap+2))*clamp((gap+speed*.32-ahead)/(speed*.32),0,1);
         side=Math.abs(side)>1?(side>=0?1:-1):1;
+        // Native f_marauder_amove_hellions: an attack-mover behind a squadmate
+        // that stops to fire passes it on the side away from its own crowd,
+        // as the ranged slide does (see slide()); the side is kept per body.
+        if(ENGAGE.awayFromCrowd&&b.team===e.team&&shooting(b)&&!e.combatTarget&&['attackMove','patrol'].includes(e.order?.kind)){
+          if(e.passFiring?.body!==b){
+            let cx=0,cy=0,k=0,t=0;
+            for(const c of neighbors(e))if(c!==e&&c.team===e.team&&c.hp>0&&dist(e,c)<ENGAGE.crowd){cx+=c.x;cy+=c.y;k++;}
+            if(k){cx=cx/k-e.x;cy=cy/k-e.y;t=(cy*ux-cx*uy)/(length(cx,cy)||1);}
+            e.passFiring={body:b,side:Math.abs(t)<ENGAGE.tie?1:-Math.sign(t)};
+          }
+          side=e.passFiring.side;
+        }
         vx+=-uy*side*force;vy+=ux*side*force;
       }
       const spacing=squad?AVOID.squadSpacing:1;
@@ -377,7 +392,9 @@ export function createMovement({entities,world,clear,openPoint,path,navVersion,l
       if(e.pointBrake?.order!==e.order||e.pointBrake.x!==p.x||e.pointBrake.y!==p.y)e.pointBrake={order:e.order,x:p.x,y:p.y,active:false};
       const finalLeg=dist(dest,goal)<.001;
       const stoppingDistance=oldSpeed*oldSpeed/(2*deceleration)+(e.pointBrake.active?oldSpeed*dt/2:0);
-      pointBraking=e.pointBrake.active=finalLeg&&remaining<stoppingDistance;
+      // A queued point successor means the unit walks through (game.js).
+      const queued=['move','attackMove','patrol'].includes(e.orders?.[0]?.kind);
+      pointBraking=e.pointBrake.active=finalLeg&&!queued&&remaining<stoppingDistance;
       if(pointBraking){
         const wanted=Math.max(0,oldSpeed-deceleration*dt),desired=length(vx,vy);
         if(desired>wanted){vx*=wanted/desired;vy*=wanted/desired;}
@@ -502,12 +519,14 @@ export const COMPACT_FORMATION_EXTENT=6*SCALE;
 // pressed into an arrived squadmate;
 // idleShare/fightShare: overlap share an arrived squadmate takes when a mover
 // hits it (Move / attack-move or fighting).
-export const ARRIVAL={touch:1,first:.75,grow:2.5,cap:3,free:1.25,big:2,slot:1,shift:7,stall:.5,contactTime:.6,idleShare:1,fightShare:.6};
+export const ARRIVAL={touch:1,first:.75,firstPair:1,grow:2.5,cap:3,free:1.25,big:2,slot:1,shift:7,stall:.5,contactTime:.6,idleShare:1,fightShare:.6};
 // Blocked ranged approach (slide()): contact = world-unit slack that counts as
 // touching; makeWay = fraction of our speed an ally must move along our
 // heading to not block; crowd = radius (world) of the crowd we peel away
-// from; tie = lateral share below which the side is a tie (turn right).
-export const ENGAGE={contact:4,makeWay:.4,crowd:42,tie:.05};
+// from; tie = lateral share below which the side is a tie (turn right);
+// awayFromCrowd: an attack-mover without a target passes a firing squadmate
+// on the side away from its own crowd too (0 = the plain avoidance side).
+export const ENGAGE={contact:4,makeWay:.4,crowd:42,tie:.05,awayFromCrowd:1};
 // Native 4.10 bodies in contact settle at r1+r2-1/16 game units (pushed idle
 // pairs, settled crowds, Marine/Tank/Hellion mixes all measure -0.0615..-0.0625).
 // combat: world-unit gap kept while either body fights (A-move concave tuning).
@@ -540,7 +559,7 @@ export const ANCHOR_DETOUR_DELAY=.25,DETOUR_LOOPS=67;
 export function reserveDestinations(movers,point,reachable) {
   if(movers.length<2)return;
   let inside=false;
-  if(movers.every(m=>['move','attackMove'].includes(m.o.kind)&&!m.u.building&&!m.u.flying&&!m.u.sieged&&!m.u.transform)){
+  if(movers.every(m=>['move','attackMove','patrol'].includes(m.o.kind)&&!m.u.building&&!m.u.flying&&!m.u.sieged&&!m.u.transform)){
     const x0=Math.min(...movers.map(m=>m.u.x-m.u.r)),x1=Math.max(...movers.map(m=>m.u.x+m.u.r));
     const y0=Math.min(...movers.map(m=>m.u.y-m.u.r)),y1=Math.max(...movers.map(m=>m.u.y+m.u.r));
     // A click inside the group's own box converges instead of translating:
@@ -561,6 +580,9 @@ export function reserveDestinations(movers,point,reachable) {
           if(Math.hypot(slots[i].x-slots[j].x,slots[i].y-slots[j].y)<movers[i].u.r+movers[j].u.r+3.5){exact=false;break;}
         }
         movers.forEach((m,i)=>{
+          // Native f_patrol_pair_cross: a compact Patrol group keeps the same
+          // mean-centred offsets (order points shifted by each unit's offset).
+          if(m.o.kind==='patrol'){m.o.x=slots[i].x;m.o.y=slots[i].y;return;}
           m.o.x=slots[i].x;m.o.y=slots[i].y;m.o.arrival={...slots[i]};m.o.arrivalRadius=radius;
           m.o.formation='preserved';m.o.groupGoal={...point};m.o.exactFormation=exact;
         });
@@ -573,6 +595,7 @@ export function reserveDestinations(movers,point,reachable) {
   // arrival may happen, so a unit passing an arrived mate far away keeps going.
   const blob=Math.sqrt(movers.reduce((sum,m)=>sum+m.u.r*m.u.r,0)/.8),largest=Math.max(...movers.map(m=>m.u.r));
   for(const m of movers){
+    if(m.o.kind==='patrol')continue;
     delete m.o.arrival;m.o.arrivalRadius=0;m.o.formation='packed';m.o.exactFormation=false;m.o.inside=inside;
     m.o.groupSize=movers.length;m.o.groupRadius=2*blob+2*largest;
   }

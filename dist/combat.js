@@ -5,6 +5,17 @@ import {SIEGE_WEAPON,FASTER,SCALE,turnTowards} from './unit-profiles.js';
 export const RANDOM_DELAY=[-.0625,.125],WEAPON_SEED=0x5c2;
 // Mutable so native comparisons can average over weapon random-delay streams.
 export const WEAPON={seed:WEAPON_SEED};
+// Help calls (CallForHelp: allies within 4 of a damaged unit acquire its
+// attacker). period: CallForHelpPeriod (2 game s), applied per victim and
+// attacker when perAttacker (native f_reaper_kite: a second Reaper hitting the
+// same Marine one loop later still calls; f_tank_marine_amove: a victim hit by
+// a new attacker calls again). nearest: two calls in one loop send each helper
+// after the nearer attacker (f_tank_marine_amove loop 73 split two ways).
+// retarget: an idle helper still approaching its target (outside weapon
+// range) takes each newer attacker (amove_vs_idle_ball loops 57/58,
+// f_reaper_kite); Attack-move helpers keep their targets (f_tank_marine_amove
+// loop 80).
+export const HELP={period:2,retarget:1,perAttacker:1,nearest:1};
 // Native c_scan_idle/c_scan_idle_hellion/c_scan_amove (24 lanes, absolute
 // game loops): idle, Attack-move and chase target scans run once every 8
 // loops, on the loop where game_loop % 8 equals the unit index % 8.
@@ -18,7 +29,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
   // where it acquired: Marine/Reaper (r .375) drop past 21.75 (seen at
   // 21.76-21.88, never at 21.52-21.66), Hellion (r .625) past 22.25 (seen at
   // 22.28-22.39, never at 22.01-22.13).
-  const helpRadius=4*SCALE,helpPeriod=2/FASTER,leashRadius=21*SCALE,dropDistance=22*SCALE;
+  const helpRadius=4*SCALE,leashRadius=21*SCALE,dropDistance=22*SCALE;
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   // CWeaponLegacy RandomDelayMin/Max (-0.0625..0.125 game s) lengthen or
   // shorten each cooldown; a seeded generator keeps simulations reproducible.
@@ -50,10 +61,15 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     const armor=(t.armor||0)+(defense.armor&&['marine','marauder','reaper'].includes(t.type)?1:0);
     const hpBefore=t.hp;
     t.hp-=Math.max(.5,amount*fraction-armor);t.lastDamageAt=clock();t.lastAttacker=e;t.lastDamageSourcePosition={x:origin.x,y:origin.y};
-    if(e.team!==t.team&&clock()-(t.lastCombatHelpAt??-Infinity)>=helpPeriod) {
-      t.lastCombatHelpAt=clock();const call={attacker:e,at:clock()};
+    const lastCall=HELP.perAttacker?(t.helpCalls??=new Map()).get(e):t.lastCombatHelpAt;
+    if(e.team!==t.team&&clock()-(lastCall??-Infinity)>=HELP.period/FASTER) {
+      t.lastCombatHelpAt=clock();if(HELP.perAttacker)t.helpCalls.set(e,clock());const call={attacker:e,at:clock()};
       for(const ally of entities())if(ally!==t&&ally.team===t.team&&ally.hp>0&&ally.damage&&
         !ally.loadedIn&&!ally.insideRefinery&&!ally.planned&&!ally.flying&&surface(ally,t).distance-ally.r<=helpRadius) {
+        // Native f_tank_marine_amove: a victim hit by two attackers in one loop
+        // sends each helper after the attacker nearer to that helper.
+        const same=ally.combatHelp?.at===call.at&&ally.combatHelp.attacker!==e;
+        if(same&&HELP.nearest&&dist(ally,ally.combatHelp.attacker)<=dist(ally,e))continue;
         ally.combatHelp=call;helpThisLoop.add(ally);
       }
     }
@@ -131,7 +147,8 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     const attacker=call.attacker;
     if(valid(e,attacker,w)&&surface(e,attacker).distance-e.r<=Math.max(w.scan,w.range,e.vision||0)&&
       (!(e.hold||e.sieged||defensive)||inRange(e,attacker,w))&&
-      (!target||priority(attacker)>priority(target)||priority(attacker)===priority(target)&&armed(attacker)&&!armed(target))) {
+      (!target||priority(attacker)>priority(target)||priority(attacker)===priority(target)&&(armed(attacker)&&!armed(target)||
+        HELP.retarget&&!o&&attacker!==target&&!inRange(e,target,w)&&rank(attacker)>=rank(target)))) {
       e.combatResponseTarget=attacker;e.combatHelpApproachAt=call.at;return attacker;
     }
     return target;
@@ -234,7 +251,7 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
         if(rangeOnly&&!reach(t))continue;
         const closer=!best||gap(t)<gap(best);
         if(!best||rank(t)>rank(best)||rank(t)===rank(best)&&
-          (!target&&closer||pursuing&&(lost&&closer||reach(t)&&(!reach(best)||closer))))best=t;
+          (!target&&closer||pursuing&&closer))best=t;
       }
       target=best;
     }
@@ -347,6 +364,6 @@ export function createCombat({entities,visible,move,research,shots,clock,onDamag
     }
     helpThisLoop.clear();return reacted;
   }
-  function reset(){missiles=[];seed=WEAPON.seed;processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatAnchor=null;e.combatReturning=false;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.lastCombatHelpAt=undefined;}}
+  function reset(){missiles=[];seed=WEAPON.seed;processedThisLoop.clear();idleThisLoop.clear();helpThisLoop.clear();for(const e of entities()){e.combatAnchor=null;e.combatReturning=false;e.combatHelp=null;e.consumedCombatHelp=null;e.combatHelpApproachAt=undefined;e.lastCombatHelpAt=undefined;e.helpCalls=null;}}
   return {begin,engage,flushHelp,cancel,acceptOrder,weapon,inRange,reset};
 }
